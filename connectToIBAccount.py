@@ -63,6 +63,17 @@ class IBAccountInfo(IBConnector):
         self.account_balance_info = pd.DataFrame(account_balance_dict)
         self.account_balance_file = 'account_info.xlsx'
         self.deposits_file = 'Deposits.xlsx'
+        self.sub_accounts = []  # Store sub-account identifiers
+        self.account_data_received = threading.Event()  # Event to signal data is received
+        self.current_account = None  # Track the current account being processed
+
+    def managedAccounts(self, accountsList):
+        """
+        Callback to get the list of sub-accounts under the master account.
+        """
+        self.sub_accounts = accountsList.split(",")[:-1]
+        print(f"Managed accounts: {self.sub_accounts}")
+        self.account_data_received.set()  # Signal that the sub-account data has been received
 
     def contractDetails(self, reqId: int, contractDetails):
         print(f"ContractDetails. ReqId: {reqId}, Contract: {contractDetails}")
@@ -73,16 +84,33 @@ class IBAccountInfo(IBConnector):
             self.account_balance_info["IbExchangeRate"] = price
             self.exchange_rate_received.set()
 
-    def accountSummary(self, reqId: int, account: str, tag: str, value: str, currency: str):
-        if tag in self.account_balance_fields:
-            self.account_balance_info[tag]["USD"] = round(float(value))
+    def accountSummary(self, reqId, account: str, tag: str, value: str, currency: str):
+        """
+        Handle account summary data for each account.
+        """
+        if account not in self.account_balance_info:
+            # Initialize account balance info for the account if it doesn't exist yet
+            self.account_balance_info[account] = {field: {"USD": 0.0, "ILS": 0.0} for field in
+                                                  self.account_balance_fields}
 
-    def request_account_summary_from_api(self):
+        if tag in self.account_balance_fields:
+            # Handle base currency (assuming it's USD)
+            if currency == "BASE" or currency == "USD":
+                self.account_balance_info[account][tag]["USD"] = round(float(value), 2)
+            elif currency == "ILS":
+                self.account_balance_info[account][tag]["ILS"] = round(float(value), 2)
+
+        #print(f"Account: {account}, Tag: {tag}, Value: {value}, Currency: {currency}")
+
+    def request_account_summary_from_api(self, account_id):
+        """
+        Fetch account summary for a specific sub-account.
+        """
+        self.current_account = account_id
         req_id = self.req_ids["account_summary"]
         self.reqAccountSummary(req_id, "All", "$LEDGER")
-        time.sleep(2)  # Wait for the responses to come in
-        self.cancelAccountSummary(req_id)  # Cancel the request to stop receiving updates
-        return self.account_balance_info
+        time.sleep(2)
+        self.cancelAccountSummary(req_id)
 
     @staticmethod
     def get_usd_to_ils_exchange_rate():
@@ -135,76 +163,164 @@ class IBAccountInfo(IBConnector):
         return deposits_df[deposits_df.Amount > 0]["Amount"].sum()  # filter out withdrawals (have negative values)
 
     def get_account_info(self, write_to_excel):
-        # fetch account balance info from IB API
-        account_balance_df = self.request_account_summary_from_api()
+        """
+        Retrieve account information for all sub-accounts.
+        """
+        # Wait for managedAccounts to populate sub_accounts
+        self.account_data_received.wait(timeout=10)  # Wait until managedAccounts is called
 
-        # Update ILS values based on the latest exchange rate
+        # Prepare a DataFrame for storing aggregated values (sum of all sub-accounts)
+        sum_data = {field: {"USD": 0.0, "ILS": 0.0} for field in self.account_balance_fields}
+        sum_df = pd.DataFrame(sum_data).T  # Transpose to get correct shape
+
+        # Get the latest USD to ILS exchange rate
         exchange_rate = self.get_usd_to_ils_exchange_rate()
-        for tag in self.account_balance_fields:
-            account_balance_df[tag]["ILS"] = round(account_balance_df[tag]["USD"] * exchange_rate)
 
+        # For each sub-account, retrieve and process account information
+        self.account_balance_info = {}  # Clear any previous data
+        for account in self.sub_accounts:
+            print(f"Fetching account information for: {account}")
+
+            # Initialize the account data structure before fetching the account summary
+            self.account_balance_info[account] = {field: {"USD": 0.0, "ILS": 0.0} for field in
+                                                  self.account_balance_fields}
+
+            # Fetch account summary for the current sub-account
+            self.request_account_summary_from_api(account)
+
+            # Update ILS values based on the latest exchange rate
+            for tag in self.account_balance_fields:
+                # Convert USD to ILS using the fetched exchange rate
+                usd_value = self.account_balance_info[account][tag]["USD"]
+                self.account_balance_info[account][tag]["ILS"] = round(usd_value * exchange_rate, 2)
+
+            # Aggregate the values to the sum DataFrame
+            for tag in self.account_balance_fields:
+                sum_df.at[tag, "USD"] += self.account_balance_info[account][tag]["USD"]
+                sum_df.at[tag, "ILS"] += self.account_balance_info[account][tag]["ILS"]
+
+        # Optionally write to Excel
         if write_to_excel:
-            self.write_account_info_to_excel(account_balance_df, exchange_rate)
+            self.write_account_info_to_excel(sum_df, self.account_balance_info, exchange_rate)
 
-        return account_balance_df
+        return sum_df, self.account_balance_info
 
-    def write_account_info_to_excel(self, account_balance_df, exchange_rate):
+    def write_account_info_to_excel(self, sum_df, account_info, exchange_rate):
+        """
+        Write account info into an Excel file. Three rows will be written: sum of accounts and individual account details.
+        """
         # Define the headers for the Excel file
         headers = [
             ('Date', 1),  # col 1
             ('Exchange Rate', 1),  # col 2
-            ('Net Liquidation', 2),  # cols 3, 4
-            ('Stock Market Value', 2),  # cols 5, 6
-            ('Total Cash Balance', 2),  # cols 7, 8
-            ('Net Dividend', 2),  # cols 9, 10
-            ('Unrealized USD PnL', 3),  # cols 11, 12, 13
-            ('Total ILS Deposits', 1),  # col 14
-            ('Unrealized ILS PnL', 3)  # cols 15, 16, 17
+            ('Type', 1),  # col 3
+            ('Net Liquidation', 2),  # cols 4, 5
+            ('Stock Market Value', 2),  # cols 6, 7
+            ('Total Cash Balance', 2),  # cols 8, 9
+            ('Net Dividend', 2),  # cols 10, 11
+            ('Unrealized USD PnL', 3),  # cols 12, 13, 14
+            ('Total ILS Deposits', 1),  # col 15 (only filled in the sum row)
+            ('Unrealized ILS PnL', 3),  # cols 16, 17, 18
         ]
 
         # Load the Excel workbook or create a new one if it doesn't exist
         try:
             workbook = openpyxl.load_workbook(EXCEL_FILES_DIR + self.account_balance_file)
             sheet = workbook.active
+
+            # Check if there is already data in the file (beyond headers)
+            if sheet.max_row > 2:
+                # Explicitly append a blank row by writing an empty string to each column
+                sheet.append(["" for _ in range(sheet.max_column)])
+
         except FileNotFoundError:
             workbook = openpyxl.Workbook()
             sheet = workbook.active
             self.write_headers(sheet, headers)
 
+        # Define the styles in correct order
         usd_currency_style, nis_currency_style, percentage_style = self.define_excel_styles(workbook)
 
+        # Get current date and time
         curr_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        total_usd_base_value = account_balance_df["NetLiquidationByCurrency"]["USD"] - account_balance_df["UnrealizedPnL"]["USD"]
-        total_ils_deposits = self.get_total_deposits()
-        unrealized_usd_pnl_percent = account_balance_df["UnrealizedPnL"]["USD"] / total_usd_base_value
-        unrealized_ils_pnl_from_deposits = account_balance_df["NetLiquidationByCurrency"]["ILS"] - total_ils_deposits
-        unrealized_ils_pnl_from_deposits_usd = unrealized_ils_pnl_from_deposits * (1 / exchange_rate)
-        unrealized_ils_pnl_from_deposits_percent = unrealized_ils_pnl_from_deposits / total_ils_deposits
 
-        # Create the account information excel row
-        account_balance_fields_flat = chain.from_iterable(zip(*account_balance_df.values.tolist()))
-        row_data = ([curr_datetime, exchange_rate] +
-                    list(account_balance_fields_flat) + [unrealized_usd_pnl_percent] +
-                    [total_ils_deposits, unrealized_ils_pnl_from_deposits_usd, unrealized_ils_pnl_from_deposits,
-                     unrealized_ils_pnl_from_deposits_percent])
+        # Write the sum of all accounts (first row)
+        self.write_row_to_excel(sheet, curr_datetime, exchange_rate, "Sum of Accounts", sum_df, usd_currency_style,
+                                nis_currency_style, percentage_style, total_ils_deposits=self.get_total_deposits())
 
-        # Write the row the Excel file
-        next_row = sheet.max_row + 1
-        nis_cols = [4, 6, 8, 10, 12, 14, 16]
-        usd_cols = [3, 5, 7, 9, 11, 15]
-        percent_cols = [13, 17]
-        for col_num, value in enumerate(row_data, start=1):
-            cell = sheet.cell(row=next_row, column=col_num, value=value)
-            # Apply currency styles
-            if col_num in nis_cols:
-                cell.style = nis_currency_style
-            elif col_num in usd_cols:
-                cell.style = usd_currency_style
-            elif col_num in percent_cols:
-                cell.style = percentage_style
+        # Write individual account data (second and third rows)
+        for account, df in account_info.items():
+            self.write_row_to_excel(sheet, None, None, account, df, usd_currency_style, nis_currency_style,
+                                    percentage_style)
 
         # Save the workbook
         workbook.save(EXCEL_FILES_DIR + self.account_balance_file)
+
+    def write_row_to_excel(self, sheet, date, exchange_rate, row_type, df, usd_style, nis_style, percentage_style,
+                           total_ils_deposits=None):
+        """
+        Write a single row of account data to the Excel file without currency symbols in values.
+        Apply currency formatting using Excel styles. Only the first row (Sum of Accounts) should display 'Total ILS Deposits'.
+        """
+        # Ensure df is converted to a DataFrame if it is a dictionary
+        if isinstance(df, dict):
+            df = pd.DataFrame(df).T  # Transpose to align the dictionary properly as a DataFrame
+
+        # Get the next available row in the sheet
+        next_row = sheet.max_row + 1
+
+        # Collect data for the row (Date, Exchange Rate, and Row Type (Sum of Accounts or Specific Account))
+        row_data = [date, exchange_rate, row_type]
+
+        # Flatten the USD and ILS values from the DataFrame and add to row_data
+        for tag in df.index:
+            row_data.append(df.loc[tag, "USD"])  # Add USD value first
+            row_data.append(df.loc[tag, "ILS"])  # Then add ILS value
+
+        # Perform Unrealized PnL calculations for each account
+        total_usd_base_value = df.loc["NetLiquidationByCurrency", "USD"] - df.loc["UnrealizedPnL", "USD"]
+        unrealized_usd_pnl_percent = df.loc["UnrealizedPnL", "USD"] / total_usd_base_value
+
+        # Add Unrealized PnL and ILS PnL fields to the row data
+
+        # Add Unrealized USD PnL %
+        row_data.append(unrealized_usd_pnl_percent)
+
+        if total_ils_deposits is not None:
+            # only the sum row will display ILS PnL
+            unrealized_ils_pnl_from_deposits = df.loc["NetLiquidationByCurrency", "ILS"] - total_ils_deposits
+            unrealized_ils_pnl_from_deposits_percent = unrealized_ils_pnl_from_deposits / total_ils_deposits
+            unrealized_ils_to_usd_pnl_from_deposits = unrealized_ils_pnl_from_deposits * (1 / exchange_rate)
+        else:
+            unrealized_ils_pnl_from_deposits = ""
+            unrealized_ils_pnl_from_deposits_percent = ""
+            unrealized_ils_to_usd_pnl_from_deposits = ""
+
+        # Add the Total ILS Deposits only for the sum row
+        if total_ils_deposits is not None:
+            row_data.append(total_ils_deposits)
+        else:
+            row_data.append("")  # Leave it blank for individual accounts
+
+        # Add Unrealized ILS PnL fields
+        row_data.append(unrealized_ils_to_usd_pnl_from_deposits)
+        row_data.append(unrealized_ils_pnl_from_deposits)
+        row_data.append(unrealized_ils_pnl_from_deposits_percent)
+
+        # Write the row data into the Excel sheet
+        for col_num, value in enumerate(row_data, start=1):
+            cell = sheet.cell(row=next_row, column=col_num, value=value)
+            if col_num <= 3:
+                continue  # skip Date, Exchange Rate and Type cols
+
+            col_type = sheet.cell(2, col_num).value
+            col_type = col_type or "NIS"  # assume col is NIS by default
+            if "%" in col_type:
+                cell.style = percentage_style  # Apply percentage style to "Unrealized PnL %" columns
+            elif "USD" in col_type:
+                cell.style = usd_style  # Apply USD style for USD columns
+            elif "NIS" in col_type:
+                cell.style = nis_style  # Apply NIS style for ILS columns
 
     @staticmethod
     def write_headers(sheet, headers):
@@ -233,7 +349,7 @@ class IBAccountInfo(IBConnector):
                 named_style = openpyxl.styles.NamedStyle(name=style, number_format=style_format)
                 workbook.add_named_style(named_style)
 
-        return list(styles.keys())
+        return ["usd_currency_style", "nis_currency_style", "percentage_style"]
 
 
 # Example usage
@@ -244,5 +360,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     with IBAccountInfo() as account:
-        account_info = account.get_account_info(write_to_excel=args.write_to_excel)
-        print(account_info)
+        sum_info, account_info = account.get_account_info(write_to_excel=args.write_to_excel)
+        print("Sum of all accounts:\n", sum_info)
+        print("Individual account information:\n", account_info)
