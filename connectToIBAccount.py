@@ -13,6 +13,7 @@ import requests
 from bs4 import BeautifulSoup
 from itertools import chain
 import argparse
+from openpyxl.styles import Font, Color
 
 EXCEL_FILES_DIR = "ExcelFiles/"
 
@@ -250,8 +251,9 @@ class IBAccountInfo(IBConnector):
 
         # Write individual account data (second and third rows)
         for account, df in account_info.items():
-            self.write_row_to_excel(sheet, None, None, account, df, usd_currency_style, nis_currency_style,
-                                    percentage_style)
+            account_name = account + (" ETFs" if account == "U13834548" else " Stocks")
+            self.write_row_to_excel(sheet, None, None, account_name, df, usd_currency_style,
+                                    nis_currency_style, percentage_style)
 
         # Save the workbook
         workbook.save(EXCEL_FILES_DIR + self.account_balance_file)
@@ -313,14 +315,28 @@ class IBAccountInfo(IBConnector):
             if col_num <= 3:
                 continue  # skip Date, Exchange Rate and Type cols
 
-            col_type = sheet.cell(2, col_num).value
-            col_type = col_type or "NIS"  # assume col is NIS by default
-            if "%" in col_type:
+            subcol_type = sheet.cell(2, col_num).value
+            subcol_type = subcol_type or "NIS"  # assume col is NIS by default
+
+            if "%" in subcol_type:
                 cell.style = percentage_style  # Apply percentage style to "Unrealized PnL %" columns
-            elif "USD" in col_type:
+            elif "USD" in subcol_type:
                 cell.style = usd_style  # Apply USD style for USD columns
-            elif "NIS" in col_type:
+            elif "NIS" in subcol_type:
                 cell.style = nis_style  # Apply NIS style for ILS columns
+
+            # Apply red or green font color for Unrealized PnL columns (USD and ILS)
+            col_header = sheet.cell(1, col_num).value
+            if not col_header:
+                col_header = sheet.cell(1, col_num - 1).value  # we are at NIS subcol of PnL
+            if not col_header:
+                col_header = sheet.cell(1, col_num - 2).value  # we are at % subcol of PnL
+            if col_header and ("Unrealized USD PnL" in col_header or "Unrealized ILS PnL" in col_header):
+                if isinstance(value, (float, int)) and value != "":
+                    if value < 0:
+                        cell.font = Font(color="FF0000")  # Red color for negative values
+                    else:
+                        cell.font = Font(color="00B050")  # Green color for positive values
 
     @staticmethod
     def write_headers(sheet, headers):
