@@ -67,6 +67,7 @@ class IBAccountInfo(IBConnector):
         self.sub_accounts = []  # Store sub-account identifiers
         self.account_data_received = threading.Event()  # Event to signal data is received
         self.current_account = None  # Track the current account being processed
+        self.account_desc = {"U13834548": "ETFS", "U17039071": "SGOV", "U19254019": "Stocks"}
 
     def managedAccounts(self, accountsList):
         """
@@ -251,7 +252,7 @@ class IBAccountInfo(IBConnector):
 
         # Write individual account data (second and third rows)
         for account, df in account_info.items():
-            account_name = account + (" ETFs" if account == "U13834548" else " Stocks")
+            account_name = account + " " + self.account_desc[account]
             self.write_row_to_excel(sheet, None, None, account_name, df, usd_currency_style,
                                     nis_currency_style, percentage_style)
 
