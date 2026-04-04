@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-from ibapi.contract import Contract
 from ibapi.common import *
 import threading
 import time
@@ -18,12 +17,7 @@ class IBAccountInfo(IBConnector):
 
     def __init__(self):
         super().__init__()
-        self.account_balance_fields = ["NetLiquidationByCurrency",
-                                       "StockMarketValue",
-                                       "TotalCashBalance",
-                                       "NetDividend",
-                                       "UnrealizedPnL"]
-        account_balance_dict = {field: {"USD": 0.0, "ILS": 0.0} for field in self.account_balance_fields}
+        account_balance_dict = {field: {"USD": 0.0, "ILS": 0.0} for field in utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS}
         self.account_balance_info = pd.DataFrame(account_balance_dict)
         self.account_balance_file = 'account_info.xlsx'
         self.deposits_file = 'Deposits.xlsx'
@@ -56,9 +50,9 @@ class IBAccountInfo(IBConnector):
         if account not in self.account_balance_info:
             # Initialize account balance info for the account if it doesn't exist yet
             self.account_balance_info[account] = {field: {"USD": 0.0, "ILS": 0.0} for field in
-                                                  self.account_balance_fields}
+                                                  utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS}
 
-        if tag in self.account_balance_fields:
+        if tag in utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS:
             # Handle base currency (assuming it's USD)
             if currency == "BASE" or currency == "USD":
                 self.account_balance_info[account][tag]["USD"] = round(float(value), 2)
@@ -75,23 +69,7 @@ class IBAccountInfo(IBConnector):
         req_id = self.req_ids["account_summary"]
         self.reqAccountSummary(req_id, "All", "$LEDGER")
         time.sleep(2)
-        self.cancelAccountSummary(req_id)    
-
-    def request_ib_exchange_rate(self):
-        """
-        fetch IB USD to ILS exchange rate
-        note that the retrieved rate is not in real-time thus cannot be depended on
-        :return:
-        """
-        contract = Contract()
-        contract.symbol = "USD"
-        contract.secType = "CASH"
-        contract.currency = "ILS"
-        contract.exchange = "IDEALPRO"
-        req_id = self.req_ids['exchange_rate']
-        self.reqMktData(req_id, contract, "", False, False, [])
-        self.exchange_rate_received.wait(timeout=10)
-        self.cancelMktData(req_id)  # Cancel the request to stop receiving updates
+        self.cancelAccountSummary(req_id)
 
     def get_total_deposits(self):
         # get total ILS deposits since inception from the manually updated file
@@ -106,7 +84,7 @@ class IBAccountInfo(IBConnector):
         self.account_data_received.wait(timeout=10)  # Wait until managedAccounts is called
 
         # Prepare a DataFrame for storing aggregated values (sum of all sub-accounts)
-        sum_data = {field: {"USD": 0.0, "ILS": 0.0} for field in self.account_balance_fields}
+        sum_data = {field: {"USD": 0.0, "ILS": 0.0} for field in utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS}
         sum_df = pd.DataFrame(sum_data).T  # Transpose to get correct shape
 
         # Get the latest USD to ILS exchange rate
@@ -119,19 +97,19 @@ class IBAccountInfo(IBConnector):
 
             # Initialize the account data structure before fetching the account summary
             self.account_balance_info[account] = {field: {"USD": 0.0, "ILS": 0.0} for field in
-                                                  self.account_balance_fields}
+                                                  utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS}
 
             # Fetch account summary for the current sub-account
             self.request_account_summary_from_api(account)
 
             # Update ILS values based on the latest exchange rate
-            for tag in self.account_balance_fields:
+            for tag in utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS:
                 # Convert USD to ILS using the fetched exchange rate
                 usd_value = self.account_balance_info[account][tag]["USD"]
                 self.account_balance_info[account][tag]["ILS"] = round(usd_value * exchange_rate, 2)
 
             # Aggregate the values to the sum DataFrame
-            for tag in self.account_balance_fields:
+            for tag in utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS:
                 sum_df.at[tag, "USD"] += self.account_balance_info[account][tag]["USD"]
                 sum_df.at[tag, "ILS"] += self.account_balance_info[account][tag]["ILS"]
 

@@ -3,6 +3,20 @@ from bs4 import BeautifulSoup
 import logging
 
 
+class IbApiConstants:
+    """
+    String constants that IB uses in it's response message
+    """
+
+    ACCOUNT_BALANCE_FIELDS = [
+        "NetLiquidationByCurrency",
+        "StockMarketValue",
+        "TotalCashBalance",
+        "NetDividend",
+        "UnrealizedPnL"
+    ]
+
+
 def get_usd_to_ils_exchange_rate():
     """
     fetch real-time USD to ILS exchange rate from an external source (Globes)
