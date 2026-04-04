@@ -9,14 +9,13 @@ from ib_connector_base import IBConnector
 import utils
 import logging
 import write_to_excel_helper
-import account_config
 
 
 class IbAccountInfoFetcher(IBConnector):
 
     def __init__(self, config_path: pathlib.Path):
         super().__init__()
-        account_cfg = account_config.load_account_config(config_path)
+        account_cfg = utils.load_account_config(config_path)
         self.account_balance_file = pathlib.Path(account_cfg["account_balance_file"])
         self.deposits_file = pathlib.Path(account_cfg["deposits_file"])
         self.account_desc = account_cfg["account_desc"]
