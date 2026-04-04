@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 from ibapi.client import EClient
 from ibapi.wrapper import EWrapper
 from ibapi.contract import Contract
