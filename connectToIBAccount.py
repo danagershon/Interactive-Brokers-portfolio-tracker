@@ -220,9 +220,10 @@ class IBAccountInfo(IBConnector):
             ('Stock Market Value', 2),  # cols 6, 7
             ('Total Cash Balance', 2),  # cols 8, 9
             ('Net Dividend', 2),  # cols 10, 11
-            ('Unrealized USD PnL', 3),  # cols 12, 13, 14
+            ('IB Unrealized USD PnL', 3),  # cols 12, 13, 14
             ('Total ILS Deposits', 1),  # col 15 (only filled in the sum row)
             ('Unrealized ILS PnL', 3),  # cols 16, 17, 18
+            ('Unrealized USD PnL', 3)  # cols 19, 20, 21
         ]
 
         # Load the Excel workbook or create a new one if it doesn't exist
@@ -260,7 +261,7 @@ class IBAccountInfo(IBConnector):
         workbook.save(EXCEL_FILES_DIR + self.account_balance_file)
 
     def write_row_to_excel(self, sheet, date, exchange_rate, row_type, df, usd_style, nis_style, percentage_style,
-                           total_ils_deposits=None):
+                           total_ils_deposits=None, total_usd_deposits=None):
         """
         Write a single row of account data to the Excel file without currency symbols in values.
         Apply currency formatting using Excel styles. Only the first row (Sum of Accounts) should display 'Total ILS Deposits'.
@@ -289,26 +290,29 @@ class IBAccountInfo(IBConnector):
         # Add Unrealized USD PnL %
         row_data.append(unrealized_usd_pnl_percent)
 
-        if total_ils_deposits is not None:
-            # only the sum row will display ILS PnL
-            unrealized_ils_pnl_from_deposits = df.loc["NetLiquidationByCurrency", "ILS"] - total_ils_deposits
-            unrealized_ils_pnl_from_deposits_percent = unrealized_ils_pnl_from_deposits / total_ils_deposits
-            unrealized_ils_to_usd_pnl_from_deposits = unrealized_ils_pnl_from_deposits * (1 / exchange_rate)
-        else:
-            unrealized_ils_pnl_from_deposits = ""
-            unrealized_ils_pnl_from_deposits_percent = ""
-            unrealized_ils_to_usd_pnl_from_deposits = ""
+        for total_deposits in [total_ils_deposits, total_usd_deposits]:
+            if total_deposits is not None:
+                # only the sum row will display ILS/USD PnL
+                currency = "ILS" if total_deposits is total_ils_deposits else "USD"
+                unrealized_pnl_from_deposits = df.loc["NetLiquidationByCurrency", currency] - total_deposits
+                unrealized_pnl_from_deposits_percent = unrealized_pnl_from_deposits / total_deposits
+                unrealized_pnl_from_deposits_in_other_currency = unrealized_pnl_from_deposits * \
+                                                                 ((1 / exchange_rate) if currency == "ILS" else exchange_rate)
+            else:
+                unrealized_pnl_from_deposits = ""
+                unrealized_pnl_from_deposits_percent = ""
+                unrealized_pnl_from_deposits_in_other_currency = ""
 
-        # Add the Total ILS Deposits only for the sum row
-        if total_ils_deposits is not None:
-            row_data.append(total_ils_deposits)
-        else:
-            row_data.append("")  # Leave it blank for individual accounts
-
-        # Add Unrealized ILS PnL fields
-        row_data.append(unrealized_ils_to_usd_pnl_from_deposits)
-        row_data.append(unrealized_ils_pnl_from_deposits)
-        row_data.append(unrealized_ils_pnl_from_deposits_percent)
+            # Add the Total ILS Deposits only for the sum row
+            if total_deposits is not None:
+                row_data.append(total_deposits)
+            else:
+                row_data.append("")  # Leave it blank for individual accounts
+    
+            # Add Unrealized ILS/USD PnL fields
+            row_data.append(unrealized_pnl_from_deposits)
+            row_data.append(unrealized_pnl_from_deposits_percent)
+            row_data.append(unrealized_pnl_from_deposits_in_other_currency)
 
         # Write the row data into the Excel sheet
         for col_num, value in enumerate(row_data, start=1):
