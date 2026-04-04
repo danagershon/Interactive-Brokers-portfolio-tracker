@@ -15,7 +15,7 @@ def set_logging_settings():
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Process some arguments.')
     parser.add_argument(
-        '--write_to_excel', 
+        '--write-to-excel', 
         action='store_true',
         help='Whether to write the account info to an Excel file'
     )
