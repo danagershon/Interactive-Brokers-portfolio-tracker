@@ -1,59 +1,22 @@
 #!/usr/bin/env python3
 
-from ibapi.client import EClient
-from ibapi.wrapper import EWrapper
 from ibapi.contract import Contract
-from ibapi.execution import ExecutionFilter
 from ibapi.common import *
 import threading
 import time
-from datetime import datetime, timedelta
-import yfinance as yf
+from datetime import datetime
 import openpyxl
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
-from itertools import chain
 import argparse
-from openpyxl.styles import Font, Color
-
-EXCEL_FILES_DIR = "ExcelFiles/"
-
-
-class IBConnector(EWrapper, EClient):
-    LOCALHOST = "127.0.0.1"
-    CLIENT_ID = 0
-
-    def __init__(self, host=LOCALHOST, connect_to_IB_GW=True, client_id=CLIENT_ID):
-        EClient.__init__(self, self)
-        self.connection_thread = threading.Thread(target=self.run)
-        self.host = host
-        self.port = 4001 if connect_to_IB_GW else 7496  # TWS port
-        self.client_id = client_id
-        self.req_ids = dict(exchange_rate=101, account_summary=9001)
-        self.exchange_rate_received = threading.Event()
-
-    def __enter__(self):
-        self.connect_app()
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.disconnect_app()
-
-    def connect_app(self):
-        self.connect(self.host, self.port, self.client_id)
-        self.connection_thread.start()
-        time.sleep(1)  # Give some time for the connection to establish
-
-    def disconnect_app(self):
-        self.disconnect()
-        self.connection_thread.join()
-
-    def error(self, reqId, errorCode:int, errorString:str, advancedOrderRejectJson = ""):
-        print(f"Error: {reqId} {errorCode} {errorString}")
+from openpyxl.styles import Font
+from ib_connector_base import IBConnector
 
 
 class IBAccountInfo(IBConnector):
+
+    EXCEL_FILES_DIR = "ExcelFiles/"
 
     def __init__(self):
         super().__init__()
@@ -163,7 +126,7 @@ class IBAccountInfo(IBConnector):
 
     def get_total_deposits(self):
         # get total ILS deposits since inception from the manually updated file
-        deposits_df = pd.read_excel(EXCEL_FILES_DIR + self.deposits_file)
+        deposits_df = pd.read_excel(self.EXCEL_FILES_DIR + self.deposits_file)
         return deposits_df[deposits_df.Amount > 0]["Amount"].sum()  # filter out withdrawals (have negative values)
 
     def get_account_info(self, write_to_excel):
@@ -230,7 +193,7 @@ class IBAccountInfo(IBConnector):
 
         # Load the Excel workbook or create a new one if it doesn't exist
         try:
-            workbook = openpyxl.load_workbook(EXCEL_FILES_DIR + self.account_balance_file)
+            workbook = openpyxl.load_workbook(self.EXCEL_FILES_DIR + self.account_balance_file)
             sheet = workbook.active
 
             # Check if there is already data in the file (beyond headers)
@@ -260,7 +223,7 @@ class IBAccountInfo(IBConnector):
                                     nis_currency_style, percentage_style)
 
         # Save the workbook
-        workbook.save(EXCEL_FILES_DIR + self.account_balance_file)
+        workbook.save(self.EXCEL_FILES_DIR + self.account_balance_file)
 
     def write_row_to_excel(self, sheet, date, exchange_rate, row_type, df, usd_style, nis_style, percentage_style,
                            total_ils_deposits=None, total_usd_deposits=None):
