@@ -3,7 +3,7 @@ import threading
 import time
 import pandas as pd
 import pathlib
-from ib_connector_base import IBConnector
+from ib_connector_base_class import IBConnector
 import utils
 import logging
 import write_to_excel_helper
