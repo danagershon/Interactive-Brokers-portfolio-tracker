@@ -31,13 +31,7 @@ class IbAccountInfoFetcher(IBConnector):
     def contractDetails(self, reqId: int, contractDetails):
         logging.info(f"ContractDetails. ReqId: {reqId}, Contract: {contractDetails}")
 
-    def tickPrice(self, reqId: int, tickType, price, attrib):
-        bid_tick = 9  # Assuming tickType 9 is the bid price
-        if reqId == self.req_ids['exchange_rate'] and tickType == bid_tick:
-            self.account_balance_info["IbExchangeRate"] = price
-            self.exchange_rate_received.set()
-
-    def accountSummary(self, reqId, account: str, tag: str, value: str, currency: str):
+    def accountSummary(self, reqId, account: utils.IbAccountId, tag: str, value: str, currency: str):
         """
         Handle account summary data for each account.
         """

@@ -6,7 +6,7 @@ import pathlib
 from typing import Any, Dict
 
 
-type IbAccountId = str  # IB Account id is a string like U<8 digits>
+type IbAccountId = str  # IB Account ID is a string like U11111111
 
 
 class IbApiConstants:
