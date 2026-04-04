@@ -3,8 +3,6 @@ import threading
 import time
 import pandas as pd
 import pathlib
-from typing import Optional
-
 from ib_connector_base import IBConnector
 import utils
 import logging
