@@ -12,6 +12,7 @@ from bs4 import BeautifulSoup
 import argparse
 from openpyxl.styles import Font
 from ib_connector_base import IBConnector
+import utils
 
 
 class IBAccountInfo(IBConnector):
@@ -77,36 +78,7 @@ class IBAccountInfo(IBConnector):
         req_id = self.req_ids["account_summary"]
         self.reqAccountSummary(req_id, "All", "$LEDGER")
         time.sleep(2)
-        self.cancelAccountSummary(req_id)
-
-    @staticmethod
-    def get_usd_to_ils_exchange_rate():
-        """
-        fetch real-time USD to ILS exchange rate from an external source (Globes)
-        :return: (float) real-time USD to ILS exchange rate
-        """
-        # Send a GET request to Globes URL
-        url = "https://www.globes.co.il/portal/instrument.aspx?InstrumentID=10463"
-        response = requests.get(url)
-
-        # Check if the request was successful
-        if response.status_code == 200:
-            # Parse the HTML content
-            soup = BeautifulSoup(response.content, 'html.parser')
-
-            # Find the div tag with the specific id, containing the exchange rate
-            tag_name, tag_id = 'div', 'bgLastDeal'
-            rate_div = soup.find(tag_name, id=tag_id)  # if scraping fails check if the tag / id changed
-
-            # Extract and return the exchange rate
-            if rate_div:
-                exchange_rate = round(float(rate_div.text.strip()), 3)
-                print(f"real-time USD to ILS exchange rate: {exchange_rate}")
-                return exchange_rate
-            else:
-                raise Exception("Exchange rate tag not found")
-        else:
-            raise Exception(f"Failed to retrieve the webpage. Status code: {response.status_code}")
+        self.cancelAccountSummary(req_id)    
 
     def request_ib_exchange_rate(self):
         """
@@ -141,7 +113,7 @@ class IBAccountInfo(IBConnector):
         sum_df = pd.DataFrame(sum_data).T  # Transpose to get correct shape
 
         # Get the latest USD to ILS exchange rate
-        exchange_rate = self.get_usd_to_ils_exchange_rate()
+        exchange_rate = utils.get_usd_to_ils_exchange_rate()
 
         # For each sub-account, retrieve and process account information
         self.account_balance_info = {}  # Clear any previous data
