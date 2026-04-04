@@ -1,17 +1,14 @@
-#!/usr/bin/env python3
-
 from ibapi.common import *
 import threading
 import time
 import pandas as pd
-import argparse
 from ib_connector_base import IBConnector
 import utils
 import logging
 import write_to_excel_helper
 
 
-class IBAccountInfo(IBConnector):
+class IbAccountInfoFetcher(IBConnector):
 
     EXCEL_FILES_DIR = "ExcelFiles/"
 
@@ -121,20 +118,3 @@ class IBAccountInfo(IBConnector):
             excel_helper.write_account_info_to_excel(sum_df, self.account_balance_info, exchange_rate, self.get_total_deposits())
 
         return sum_df, self.account_balance_info
-
-
-# Example usage
-if __name__ == "__main__":
-    logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
-    # ibapi logs every request/response at INFO; keep only our app messages at INFO
-    logging.getLogger("ibapi").setLevel(logging.WARNING)
-
-    parser = argparse.ArgumentParser(description='Process some arguments.')
-    parser.add_argument('--write_to_excel', action='store_true',
-                        help='Whether to write the account info to an Excel file')
-    args = parser.parse_args()
-
-    with IBAccountInfo() as account:
-        sum_info, account_info = account.get_account_info(write_to_excel=args.write_to_excel)
-        print("Sum of all accounts:\n", sum_info)
-        print("Individual account information:\n", account_info)
