@@ -3,7 +3,7 @@
 import logging
 import argparse
 import pathlib
-from ib_account_info_fetcher import IbAccountInfoFetcher
+from ib_account_info_fetcher_class import IbAccountInfoFetcher
 
 
 def set_logging_settings():
