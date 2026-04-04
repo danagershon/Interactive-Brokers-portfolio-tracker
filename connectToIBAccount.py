@@ -17,7 +17,7 @@ class IBAccountInfo(IBConnector):
 
     def __init__(self):
         super().__init__()
-        account_balance_dict = {field: {"USD": 0.0, "ILS": 0.0} for field in utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS}
+        account_balance_dict = self.create_blank_account_data_structure_dict()
         self.account_balance_info = pd.DataFrame(account_balance_dict)
         self.account_balance_file = 'account_info.xlsx'
         self.deposits_file = 'Deposits.xlsx'
@@ -49,8 +49,7 @@ class IBAccountInfo(IBConnector):
         """
         if account not in self.account_balance_info:
             # Initialize account balance info for the account if it doesn't exist yet
-            self.account_balance_info[account] = {field: {"USD": 0.0, "ILS": 0.0} for field in
-                                                  utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS}
+            self.account_balance_info[account] = self.create_blank_account_data_structure_dict()
 
         if tag in utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS:
             # Handle base currency (assuming it's USD)
@@ -71,6 +70,10 @@ class IBAccountInfo(IBConnector):
         time.sleep(2)
         self.cancelAccountSummary(req_id)
 
+    @staticmethod
+    def create_blank_account_data_structure_dict():
+        return {field: {"USD": 0.0, "ILS": 0.0} for field in utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS}
+
     def get_total_deposits(self):
         # get total ILS deposits since inception from the manually updated file
         deposits_df = pd.read_excel(self.EXCEL_FILES_DIR + self.deposits_file)
@@ -84,7 +87,7 @@ class IBAccountInfo(IBConnector):
         self.account_data_received.wait(timeout=10)  # Wait until managedAccounts is called
 
         # Prepare a DataFrame for storing aggregated values (sum of all sub-accounts)
-        sum_data = {field: {"USD": 0.0, "ILS": 0.0} for field in utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS}
+        sum_data = self.create_blank_account_data_structure_dict()
         sum_df = pd.DataFrame(sum_data).T  # Transpose to get correct shape
 
         # Get the latest USD to ILS exchange rate
@@ -96,8 +99,7 @@ class IBAccountInfo(IBConnector):
             logging.info(f"Fetching account information for: {account}")
 
             # Initialize the account data structure before fetching the account summary
-            self.account_balance_info[account] = {field: {"USD": 0.0, "ILS": 0.0} for field in
-                                                  utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS}
+            self.account_balance_info[account] = self.create_blank_account_data_structure_dict()
 
             # Fetch account summary for the current sub-account
             self.request_account_summary_from_api(account)
