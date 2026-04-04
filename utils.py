@@ -6,6 +6,9 @@ import pathlib
 from typing import Any, Dict
 
 
+type IbAccountId = str  # IB Account id is a string like U<8 digits>
+
+
 class IbApiConstants:
     """
     String constants that IB uses in it's response message

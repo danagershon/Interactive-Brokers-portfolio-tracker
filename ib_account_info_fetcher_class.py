@@ -16,15 +16,15 @@ class IbAccountInfoFetcher(IBConnector):
         self.account_info_output_file, self.deposits_file, self.account_desc = \
             utils.load_account_config(config_path)
         self.account_balance_info = pd.DataFrame(self.create_blank_account_data_structure_dict())
-        self.sub_accounts = []  # Store sub-account identifiers
+        self.sub_accounts: list[utils.IbAccountId] = []  # Store sub-account identifiers
         self.account_data_received = threading.Event()  # Event to signal data is received
-        self.current_account = None  # Track the current account being processed
+        self.current_account: utils.IbAccountId = None  # Track the current account being processed
 
     def managedAccounts(self, accountsList):
         """
         Callback to get the list of sub-accounts under the master account.
         """
-        self.sub_accounts = accountsList.split(",")[:-1]
+        self.sub_accounts = list[utils.IbAccountId](accountsList.split(",")[:-1])
         logging.info(f"Managed accounts: {self.sub_accounts}")
         self.account_data_received.set()  # Signal that the sub-account data has been received
 
