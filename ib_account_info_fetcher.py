@@ -2,26 +2,29 @@ from ibapi.common import *
 import threading
 import time
 import pandas as pd
+import pathlib
+from typing import Optional
+
 from ib_connector_base import IBConnector
 import utils
 import logging
 import write_to_excel_helper
+import account_config
 
 
 class IbAccountInfoFetcher(IBConnector):
 
-    EXCEL_FILES_DIR = "ExcelFiles/"
-
-    def __init__(self):
+    def __init__(self, config_path: pathlib.Path):
         super().__init__()
+        account_cfg = account_config.load_account_config(config_path)
+        self.account_balance_file = pathlib.Path(account_cfg["account_balance_file"])
+        self.deposits_file = pathlib.Path(account_cfg["deposits_file"])
+        self.account_desc = account_cfg["account_desc"]
         account_balance_dict = self.create_blank_account_data_structure_dict()
         self.account_balance_info = pd.DataFrame(account_balance_dict)
-        self.account_balance_file = 'account_info.xlsx'
-        self.deposits_file = 'Deposits.xlsx'
         self.sub_accounts = []  # Store sub-account identifiers
         self.account_data_received = threading.Event()  # Event to signal data is received
         self.current_account = None  # Track the current account being processed
-        self.account_desc = {"U13834548": "ETFS", "U17039071": "SGOV", "U19254019": "Stocks"}
 
     def managedAccounts(self, accountsList):
         """
@@ -73,7 +76,7 @@ class IbAccountInfoFetcher(IBConnector):
 
     def get_total_deposits(self):
         # get total ILS deposits since inception from the manually updated file
-        deposits_df = pd.read_excel(self.EXCEL_FILES_DIR + self.deposits_file)
+        deposits_df = pd.read_excel(self.deposits_file)
         return deposits_df[deposits_df.Amount > 0]["Amount"].sum()  # filter out withdrawals (have negative values)
 
     def get_account_info(self, write_to_excel):
@@ -114,7 +117,7 @@ class IbAccountInfoFetcher(IBConnector):
 
         # Optionally write to Excel
         if write_to_excel:
-            excel_helper = write_to_excel_helper.ExcelHelper(self.EXCEL_FILES_DIR, self.account_balance_file, self.deposits_file, self.account_desc)
+            excel_helper = write_to_excel_helper.ExcelHelper(self.account_balance_file, self.deposits_file, self.account_desc)
             excel_helper.write_account_info_to_excel(sum_df, self.account_balance_info, exchange_rate, self.get_total_deposits())
 
         return sum_df, self.account_balance_info

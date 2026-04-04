@@ -1,0 +1,10 @@
+{
+  "excel_files_dir": "ExcelFiles/",
+  "account_balance_file": "account_info.xlsx",
+  "deposits_file": "Deposits.xlsx",
+  "account_desc": {
+    "U13834548": "ETFS",
+    "U17039071": "SGOV",
+    "U19254019": "Stocks"
+  }
+}
