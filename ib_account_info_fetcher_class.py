@@ -13,12 +13,9 @@ class IbAccountInfoFetcher(IBConnector):
 
     def __init__(self, config_path: pathlib.Path):
         super().__init__()
-        account_cfg = utils.load_account_config(config_path)
-        self.account_balance_file = pathlib.Path(account_cfg["account_balance_file"])
-        self.deposits_file = pathlib.Path(account_cfg["deposits_file"])
-        self.account_desc = account_cfg["account_desc"]
-        account_balance_dict = self.create_blank_account_data_structure_dict()
-        self.account_balance_info = pd.DataFrame(account_balance_dict)
+        self.account_info_output_file, self.deposits_file, self.account_desc = \
+            utils.load_account_config(config_path)
+        self.account_balance_info = pd.DataFrame(self.create_blank_account_data_structure_dict())
         self.sub_accounts = []  # Store sub-account identifiers
         self.account_data_received = threading.Event()  # Event to signal data is received
         self.current_account = None  # Track the current account being processed
@@ -114,7 +111,7 @@ class IbAccountInfoFetcher(IBConnector):
 
         # Optionally write to Excel
         if write_to_excel:
-            excel_helper = write_to_excel_helper.ExcelHelper(self.account_balance_file, self.deposits_file, self.account_desc)
+            excel_helper = write_to_excel_helper.ExcelHelper(self.account_info_output_file, self.deposits_file, self.account_desc)
             excel_helper.write_account_info_to_excel(sum_df, self.account_balance_info, exchange_rate, self.get_total_deposits())
 
         return sum_df, self.account_balance_info

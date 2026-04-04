@@ -49,7 +49,9 @@ def get_usd_to_ils_exchange_rate():
 
 
 def load_account_config(config_path: pathlib.Path) -> Dict[str, Any]:
-    """Load account_balance_file, deposits_file, and account_desc from JSON."""
+    """
+    Load account_info_output_file, deposits_file, and account_desc from JSON.
+    """
     if not config_path.is_file():
         raise FileNotFoundError(
             f"Account config JSON not found: {config_path}. Copy account_config.example.json to "
@@ -57,13 +59,17 @@ def load_account_config(config_path: pathlib.Path) -> Dict[str, Any]:
         )
 
     with open(config_path, encoding="utf-8") as f:
-        data = json.load(f)
+        account_config_data = json.load(f)
 
-    required = ("account_balance_file", "deposits_file", "account_desc")
-    missing = [k for k in required if k not in data]
+    required_keys = ("account_info_output_file", "deposits_file", "account_desc")
+    missing = [required_key for required_key in required_keys if required_key not in account_config_data]
     if missing:
         raise ValueError(f"Account config missing keys: {missing}")
-    if not isinstance(data["account_desc"], dict):
+    if not isinstance(account_config_data["account_desc"], dict):
         raise ValueError("account_desc must be a JSON object mapping account id strings to labels")
 
-    return data
+    account_info_output_file = pathlib.Path(account_config_data["account_info_output_file"])
+    deposits_file = pathlib.Path(account_config_data["deposits_file"])
+    account_desc = account_config_data["account_desc"]
+
+    return account_info_output_file, deposits_file, account_desc

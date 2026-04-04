@@ -24,8 +24,8 @@ class ExcelHelper:
         ('Unrealized USD PnL', 3)  # cols 19, 20, 21
     ]
 
-    def __init__(self, account_balance_file: pathlib.Path, deposits_file: pathlib.Path, account_desc: dict):
-        self.account_balance_file = account_balance_file
+    def __init__(self, account_info_output_file: pathlib.Path, deposits_file: pathlib.Path, account_desc: dict):
+        self.account_info_output_file = account_info_output_file
         self.deposits_file = deposits_file
         self.account_desc = account_desc
         self.workbook = self.sheet = None
@@ -33,8 +33,8 @@ class ExcelHelper:
     def load_or_create_workbook(self):
         """Load the Excel workbook or create a new one if it doesn't exist"""
         try:
-            logging.debug(f"Loading workbook from: {self.account_balance_file}")
-            self.workbook = openpyxl.load_workbook(self.account_balance_file)
+            logging.debug(f"Loading workbook from: {self.account_info_output_file}")
+            self.workbook = openpyxl.load_workbook(self.account_info_output_file)
             self.sheet = self.workbook.active
 
             # Check if there is already data in the file (beyond headers)
@@ -70,7 +70,7 @@ class ExcelHelper:
                                     nis_currency_style, percentage_style)
 
         # Save the workbook
-        self.workbook.save(self.account_balance_file)
+        self.workbook.save(self.account_info_output_file)
 
     def write_row_to_excel(self, date, exchange_rate, row_type, df, usd_style, nis_style, percentage_style,
                            total_ils_deposits=None, total_usd_deposits=None):

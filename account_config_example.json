@@ -1,5 +1,5 @@
 {
-  "account_balance_file": "account_info.xlsx",
+  "account_info_output_file": "account_info.xlsx",
   "deposits_file": "deposits.xlsx",
   "account_desc": {
     "U11111111": "ETFs",
