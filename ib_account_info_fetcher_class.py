@@ -43,7 +43,7 @@ class IbAccountInfoFetcher(IBConnector):
             # Initialize account balance info for the account if it doesn't exist yet
             self.account_balance_info[account] = self.create_blank_account_data_structure_dict()
 
-        if tag in IbApiConstants.ACCOUNT_BALANCE_FIELDS:
+        if tag in IbApiConstants.ACCOUNT_BALANCE_FIELD_LIST:
             # Handle base currency (assuming it's USD)
             curreny_key = IbApiConstants.Currency.USD if currency in [IbApiConstants.Currency.BASE, IbApiConstants.Currency.USD] \
                 else IbApiConstants.Currency.ILS             
@@ -64,7 +64,7 @@ class IbAccountInfoFetcher(IBConnector):
     @staticmethod
     def create_blank_account_data_structure_dict():
         return {field: {IbApiConstants.Currency.USD: 0.0, IbApiConstants.Currency.ILS: 0.0} 
-                for field in IbApiConstants.ACCOUNT_BALANCE_FIELDS}
+                for field in IbApiConstants.ACCOUNT_BALANCE_FIELD_LIST}
 
     def get_total_deposits(self):
         # get total ILS deposits since inception from the manually updated file
@@ -96,20 +96,20 @@ class IbAccountInfoFetcher(IBConnector):
             # Fetch account summary for the current sub-account
             self.request_account_summary_from_api(account)
 
-            # Update ILS values based on the latest exchange rate
-            for tag in IbApiConstants.ACCOUNT_BALANCE_FIELDS:
+            for tag in IbApiConstants.ACCOUNT_BALANCE_FIELD_LIST:
+                tag_data_dict = self.account_balance_info[account][tag]
                 # Convert USD to ILS using the fetched exchange rate
-                usd_value = self.account_balance_info[account][tag][IbApiConstants.Currency.USD]
-                self.account_balance_info[account][tag][IbApiConstants.Currency.ILS] = round(usd_value * exchange_rate, 2)
+                usd_value = tag_data_dict[IbApiConstants.Currency.USD]
+                tag_data_dict[IbApiConstants.Currency.ILS] = round(usd_value * exchange_rate, 2)
 
-            # Aggregate the values to the sum DataFrame
-            for tag in IbApiConstants.ACCOUNT_BALANCE_FIELDS:
-                sum_df.at[tag, IbApiConstants.Currency.USD] += self.account_balance_info[account][tag][IbApiConstants.Currency.USD]
-                sum_df.at[tag, IbApiConstants.Currency.ILS] += self.account_balance_info[account][tag][IbApiConstants.Currency.ILS]
+                # Aggregate the values to the sum DataFrame for each currency
+                for currency in [IbApiConstants.Currency.USD, IbApiConstants.Currency.ILS]:
+                    sum_df.at[tag, currency] += tag_data_dict[currency]
 
         # Optionally write to Excel
         if write_to_excel:
-            excel_helper = write_to_excel_helper.ExcelHelper(self.account_info_output_file, self.deposits_file, self.account_desc)
-            excel_helper.write_account_info_to_excel(sum_df, self.account_balance_info, exchange_rate, self.get_total_deposits())
+            excel_helper = write_to_excel_helper.ExcelHelper()
+            excel_helper.write_account_info_to_excel(self.account_info_output_file, self.account_desc, sum_df, 
+                                                     self.account_balance_info, exchange_rate, self.get_total_deposits())
 
         return sum_df, self.account_balance_info

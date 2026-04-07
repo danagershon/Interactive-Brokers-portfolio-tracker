@@ -109,12 +109,19 @@ class IbApiConstants:
         USD = "USD"
         ILS = "ILS"
 
-    ACCOUNT_BALANCE_FIELDS = [
-        "NetLiquidationByCurrency",
-        "StockMarketValue",
-        "TotalCashBalance",
-        "NetDividend",
-        "UnrealizedPnL"
+    class AccountBalanceField:
+        NET_LIQUIDATION_BY_CURRENCY = "NetLiquidationByCurrency"
+        STOCK_MARKET_VALUE = "StockMarketValue"  # total value of all stocks in the accountm in USD
+        TOTAL_CASH_BALANCE = "TotalCashBalance"  # total cash in the account, in USD
+        NET_DIVIDEND = "NetDividend"  # net dividend in the account, in USD
+        UNREALIZED_PNL = "UnrealizedPnL"  # unrealized profit/loss in the account, in USD
+
+    ACCOUNT_BALANCE_FIELD_LIST = [
+        AccountBalanceField.NET_LIQUIDATION_BY_CURRENCY,
+        AccountBalanceField.STOCK_MARKET_VALUE,
+        AccountBalanceField.TOTAL_CASH_BALANCE,
+        AccountBalanceField.NET_DIVIDEND,
+        AccountBalanceField.UNREALIZED_PNL
     ]
 
 

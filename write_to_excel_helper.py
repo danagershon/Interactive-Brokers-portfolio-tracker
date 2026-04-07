@@ -5,6 +5,7 @@ from datetime import datetime
 import logging
 import pathlib
 import utils
+from utils import IbApiConstants
 
 
 class ExcelHelper:
@@ -24,17 +25,53 @@ class ExcelHelper:
         ('Unrealized USD PnL', 3)  # cols 19, 20, 21
     ]
 
-    def __init__(self, account_info_output_file: pathlib.Path, deposits_file: pathlib.Path, account_desc: dict):
-        self.account_info_output_file = account_info_output_file
-        self.deposits_file = deposits_file
-        self.account_desc = account_desc
-        self.workbook = self.sheet = None
+    class Colors:
+        RED = "FF0000"
+        GREEN = "00B050"
 
-    def load_or_create_workbook(self):
+    class StyleName:
+        USD_CURRENCY_STYLE = "usd_currency_style"
+        ILS_CURRENCY_STYLE = "ils_currency_style"
+        PERCENTAGE_STYLE = "percentage_style"
+
+    STYLES = {
+        StyleName.USD_CURRENCY_STYLE: "$#,##0",
+        StyleName.ILS_CURRENCY_STYLE: "₪#,##0",
+        StyleName.PERCENTAGE_STYLE: "0.00%"
+    }
+
+    SUM_OF_ACCOUNTS_ROW_TYPE = "Sum of Accounts"
+
+    def __init__(self):
+        self.workbook = None
+        self.sheet = None
+
+    def write_account_info_to_excel(self, account_info_output_file: pathlib.Path, account_desc: dict[str, str], sum_df, account_info, exchange_rate, total_ils_deposits):
+        """
+        Write account info into an Excel file. Rows will be written for: sum of accounts and individual account details.
+        """
+        self._load_or_create_workbook(account_info_output_file)
+        self._define_excel_styles()
+        curr_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # Write the sum of all accounts (first row)
+        self._write_row_to_excel(self.SUM_OF_ACCOUNTS_ROW_TYPE, sum_df, date=curr_datetime, 
+                                 exchange_rate=exchange_rate, total_ils_deposits=total_ils_deposits)
+
+        # Write individual account data (second row and onwards)
+        for account_id, account_data_df in account_info.items():
+            account_name = account_id + " " + account_desc[account_id]
+            # No need to write date and exchange rate for individual accounts, since they appear once in the sum row
+            self._write_row_to_excel(account_name, account_data_df)
+
+        # Save the workbook
+        self.workbook.save(account_info_output_file)
+
+    def _load_or_create_workbook(self, account_info_output_file: pathlib.Path):
         """Load the Excel workbook or create a new one if it doesn't exist"""
         try:
-            logging.debug(f"Loading workbook from: {self.account_info_output_file}")
-            self.workbook = openpyxl.load_workbook(self.account_info_output_file)
+            logging.debug(f"Loading workbook from: {account_info_output_file}")
+            self.workbook = openpyxl.load_workbook(account_info_output_file)
             self.sheet = self.workbook.active
 
             # Check if there is already data in the file (beyond headers)
@@ -45,34 +82,9 @@ class ExcelHelper:
         except FileNotFoundError:
             self.workbook = openpyxl.Workbook()
             self.sheet = self.workbook.active
-            utils.ExcelHelper.write_headers(self.sheet, self.HEADERS)
+            utils.ExcelHelper._write_headers(self.sheet, self.HEADERS)
 
-    def write_account_info_to_excel(self, sum_df, account_info, exchange_rate, total_ils_deposits):
-        """
-        Write account info into an Excel file. Three rows will be written: sum of accounts and individual account details.
-        """
-        self.load_or_create_workbook()
-
-        # Define the styles in correct order
-        usd_currency_style, nis_currency_style, percentage_style = self.define_excel_styles()
-
-        # Get current date and time
-        curr_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # Write the sum of all accounts (first row)
-        self.write_row_to_excel(curr_datetime, exchange_rate, "Sum of Accounts", sum_df, usd_currency_style,
-                                nis_currency_style, percentage_style, total_ils_deposits=total_ils_deposits)
-
-        # Write individual account data (second and third rows)
-        for account, df in account_info.items():
-            account_name = account + " " + self.account_desc[account]
-            self.write_row_to_excel(None, None, account_name, df, usd_currency_style,
-                                    nis_currency_style, percentage_style)
-
-        # Save the workbook
-        self.workbook.save(self.account_info_output_file)
-
-    def write_row_to_excel(self, date, exchange_rate, row_type, df, usd_style, nis_style, percentage_style,
+    def _write_row_to_excel(self, row_type, df, date=None, exchange_rate=None, 
                            total_ils_deposits=None, total_usd_deposits=None):
         """
         Write a single row of account data to the Excel file without currency symbols in values.
@@ -90,12 +102,14 @@ class ExcelHelper:
 
         # Flatten the USD and ILS values from the DataFrame and add to row_data
         for tag in df.index:
-            row_data.append(df.loc[tag, "USD"])  # Add USD value first
-            row_data.append(df.loc[tag, "ILS"])  # Then add ILS value
+            row_data.append(df.loc[tag, IbApiConstants.Currency.USD])  # Add USD value first
+            row_data.append(df.loc[tag, IbApiConstants.Currency.ILS])  # Then add ILS value
 
         # Perform Unrealized PnL calculations for each account
-        total_usd_base_value = df.loc["NetLiquidationByCurrency", "USD"] - df.loc["UnrealizedPnL", "USD"]
-        unrealized_usd_pnl_percent = df.loc["UnrealizedPnL", "USD"] / total_usd_base_value
+        usd_net_liquidation = df.loc[IbApiConstants.AccountBalanceField.NET_LIQUIDATION_BY_CURRENCY, IbApiConstants.Currency.USD]
+        usd_unrealized_pnl = df.loc[IbApiConstants.AccountBalanceField.UNREALIZED_PNL, IbApiConstants.Currency.USD]
+        total_usd_base_value = usd_net_liquidation - usd_unrealized_pnl
+        unrealized_usd_pnl_percent = usd_unrealized_pnl / total_usd_base_value
 
         # Add Unrealized PnL and ILS PnL fields to the row data
 
@@ -105,11 +119,11 @@ class ExcelHelper:
         for total_deposits in [total_ils_deposits, total_usd_deposits]:
             if total_deposits is not None:
                 # only the sum row will display ILS/USD PnL
-                currency = "ILS" if total_deposits is total_ils_deposits else "USD"
-                unrealized_pnl_from_deposits = df.loc["NetLiquidationByCurrency", currency] - total_deposits
+                currency = IbApiConstants.Currency.ILS if total_deposits is total_ils_deposits else IbApiConstants.Currency.USD
+                unrealized_pnl_from_deposits = df.loc[IbApiConstants.AccountBalanceField.NET_LIQUIDATION_BY_CURRENCY, currency] - total_deposits
                 unrealized_pnl_from_deposits_percent = unrealized_pnl_from_deposits / total_deposits
                 unrealized_pnl_from_deposits_in_other_currency = unrealized_pnl_from_deposits * \
-                                                                 ((1 / exchange_rate) if currency == "ILS" else exchange_rate)
+                                                                 ((1 / exchange_rate) if currency == IbApiConstants.Currency.ILS else exchange_rate)
             else:
                 unrealized_pnl_from_deposits = ""
                 unrealized_pnl_from_deposits_percent = ""
@@ -133,37 +147,39 @@ class ExcelHelper:
                 continue  # skip Date, Exchange Rate and Type cols
 
             subcol_type = self.sheet.cell(2, col_num).value
-            subcol_type = subcol_type or "NIS"  # assume col is NIS by default
+            subcol_type = subcol_type or IbApiConstants.Currency.ILS  # assume col is ILS by default
 
             if "%" in subcol_type:
-                cell.style = percentage_style  # Apply percentage style to "Unrealized PnL %" columns
-            elif "USD" in subcol_type:
-                cell.style = usd_style  # Apply USD style for USD columns
+                cell.style = self.StyleName.PERCENTAGE_STYLE  # Apply percentage style to "Unrealized PnL %" columns
+            elif IbApiConstants.Currency.USD in subcol_type:
+                cell.style = self.StyleName.USD_CURRENCY_STYLE  # Apply USD style for USD columns
             elif "NIS" in subcol_type:
-                cell.style = nis_style  # Apply NIS style for ILS columns
+                cell.style = self.StyleName.ILS_CURRENCY_STYLE  # Apply ILS style for ILS columns
 
             # Apply red or green font color for Unrealized PnL columns (USD and ILS)
             col_header = self.sheet.cell(1, col_num).value
             if not col_header:
-                col_header = self.sheet.cell(1, col_num - 1).value  # we are at NIS subcol of PnL
+                col_header = self.sheet.cell(1, col_num - 1).value  # we are at ILS subcol of PnL
             if not col_header:
                 col_header = self.sheet.cell(1, col_num - 2).value  # we are at % subcol of PnL
             if col_header and ("Unrealized USD PnL" in col_header or "Unrealized ILS PnL" in col_header):
                 if isinstance(value, (float, int)) and value != "":
                     if value < 0:
-                        cell.font = Font(color="FF0000")  # Red color for negative values
+                        cell.font = Font(color=self.Colors.RED)  # Red color for negative values
                     else:
-                        cell.font = Font(color="00B050")  # Green color for positive values
+                        cell.font = Font(color=self.Colors.GREEN)  # Green color for positive values
 
-    def write_headers(self, headers):
-        # Write the headers with merged cells for sub-columns
+    def _write_headers(self, headers):
+        """
+        Write the headers with merged cells for sub-columns
+        """
         col = 1
         for header, span in headers:
             if span > 1:
                 self.sheet.merge_cells(start_row=1, start_column=col, end_row=1, end_column=col + span - 1)
                 self.sheet.cell(row=1, column=col).value = header
                 self.sheet.cell(row=1, column=col).alignment = openpyxl.styles.Alignment(horizontal='center')
-                for i, subcol_name in zip(range(span), ['USD', 'NIS', '%']):
+                for i, subcol_name in zip(range(span), [IbApiConstants.Currency.USD, IbApiConstants.Currency.ILS, '%']):
                     self.sheet.cell(row=2, column=col + i).value = subcol_name
             else:
                 self.sheet.cell(row=1, column=col).value = header
@@ -171,13 +187,11 @@ class ExcelHelper:
                 self.sheet.cell(row=2, column=col).value = ''
             col += span
 
-    def define_excel_styles(self):
-        # Define currency and percent styles if they don't already exist
-        styles = {"usd_currency_style": "$#,##0", "nis_currency_style": "₪#,##0", "percentage_style": "0.00%"}
-
-        for style, style_format in styles.items():
+    def _define_excel_styles(self):
+        """
+        Define currency and percent styles if they don't already exist
+        """
+        for style, style_format in self.STYLES.items():
             if style not in self.workbook.named_styles:
                 named_style = openpyxl.styles.NamedStyle(name=style, number_format=style_format)
                 self.workbook.add_named_style(named_style)
-
-        return ["usd_currency_style", "nis_currency_style", "percentage_style"]
