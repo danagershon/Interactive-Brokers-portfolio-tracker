@@ -4,6 +4,7 @@ import logging
 import json
 import pathlib
 from typing import Any, Dict
+from http import HTTPStatus
 
 
 type IbAccountId = str  # IB Account ID is a string like U11111111
@@ -13,6 +14,24 @@ class IbApiConstants:
     """
     String constants that IB uses in it's response message
     """
+    CLIENT_ID = 0  # IB API client ID
+
+    class Ports:
+        IB_GW_PORT = 4001
+        TWS_PORT = 7496
+    
+    class ReqIds:
+        ACCOUNT_SUMMARY_REQ_ID = 9001
+
+    class AccountSummaryReq:
+        ACCOUNT_SUMMARY = "account_summary"
+        ALL = "All"
+        LEDGER = "$LEDGER"
+
+    class Currency:
+        BASE = "BASE"
+        USD = "USD"
+        ILS = "ILS"
 
     ACCOUNT_BALANCE_FIELDS = [
         "NetLiquidationByCurrency",
@@ -22,10 +41,31 @@ class IbApiConstants:
         "UnrealizedPnL"
     ]
 
-    class Currency:
-        BASE = "BASE"
-        USD = "USD"
-        ILS = "ILS"
+
+class DepositsFile:
+    """
+    Deposits file is an Excel file that contains the deposits and withdrawals of the account.
+    """
+    class ExpectedColumns:
+        """
+        The expected columns in the deposits file are (from left to right):
+            - Date: The date of the deposit or withdrawal
+            - Amount: The amount of the deposit or withdrawal
+            - Currency: The currency of the deposit or withdrawal
+            - Type: The type of the deposit or withdrawal ("Deposit" or "Withdrawal")
+            - Exchange Rate: The exchange rate of the deposit or withdrawal
+
+        There can be more columns in the file, but the expected columns must be in this order.
+        """
+        DATE = "Date"
+        AMOUNT = "Amount"
+        CURRENCY = "Currency"
+        TYPE = "Type"  # one of the OperationTypes
+        EXCHANGE_RATE = "Exchange Rate"
+
+    class OperationTypes:
+        DEPOSIT = "Deposit"
+        WITHDRAWAL = "Withdrawal"
 
 
 def get_usd_to_ils_exchange_rate():
@@ -37,7 +77,7 @@ def get_usd_to_ils_exchange_rate():
     url = "https://www.globes.co.il/portal/instrument.aspx?InstrumentID=10463"
     response = requests.get(url)
 
-    if response.status_code != 200:
+    if response.status_code != HTTPStatus.OK:
         raise Exception(f"Failed to retrieve the Globes webpage to get the USD to ILS exchange rate. Status code: {response.status_code}")
 
     # the request was successful, so parse the HTML content

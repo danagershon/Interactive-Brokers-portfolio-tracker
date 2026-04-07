@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+"""
+Main script to fetch IB account info and write to Excel
+"""
+
 import logging
 import argparse
 import pathlib
@@ -7,12 +11,20 @@ from ib_account_info_fetcher_class import IbAccountInfoFetcher
 
 
 def set_logging_settings():
+    """
+    Set logging settings for the application: info level for all messages, warning level for ibapi messages
+    """
     logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
     # ibapi logs every request/response at INFO; keep only our app messages at INFO
     logging.getLogger("ibapi").setLevel(logging.WARNING)
 
 
 def parse_arguments():
+    """
+    Parse command line arguments:
+    --excel: Whether to write the account info to an Excel file
+    --json-config: Path to account JSON (default: account_config.json next to the project scripts)
+    """
     parser = argparse.ArgumentParser(description='Process some arguments.')
     parser.add_argument(
         '--excel',
