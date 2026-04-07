@@ -5,7 +5,7 @@ import pandas as pd
 import pathlib
 from ib_connector_base_class import IBConnector
 import utils
-from utils import IbApiConstants, DepositsFile
+from utils import IbApiConstants, DepositsFile, AccountConfigJson
 import logging
 import write_to_excel_helper
 
@@ -18,7 +18,7 @@ class IbAccountInfoFetcher(IBConnector):
     def __init__(self, config_path: pathlib.Path):
         super().__init__()
         self.account_info_output_file, self.deposits_file, self.account_desc = \
-            utils.load_account_config(config_path)
+            AccountConfigJson.load_account_config(config_path)
         self.account_balance_info = pd.DataFrame(self.create_blank_account_data_structure_dict())
         self.sub_accounts: list[utils.IbAccountId] = []  # Store sub-account identifiers
         self.account_data_received = threading.Event()  # Event to signal data is received

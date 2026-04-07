@@ -10,6 +10,82 @@ from http import HTTPStatus
 type IbAccountId = str  # IB Account ID is a string like U11111111
 
 
+class AccountConfigJson:
+    """
+    Account config JSON is a JSON file that contains the account information and paths to the output file and deposits file.
+
+    Contains only static methods (the class is not meant to be instantiated).
+    """
+
+    class ExpectedKeys:
+        ACCOUNT_INFO_OUTPUT_FILE = "account_info_output_file"
+        DEPOSITS_FILE = "deposits_file"
+        ACCOUNT_DESC = "account_desc"
+
+    @staticmethod
+    def get_keys() -> list[str]:
+        """
+        Get the expected keys for the account config JSON file.
+        """
+        return [AccountConfigJson.ExpectedKeys.ACCOUNT_INFO_OUTPUT_FILE, 
+                AccountConfigJson.ExpectedKeys.DEPOSITS_FILE, 
+                AccountConfigJson.ExpectedKeys.ACCOUNT_DESC]
+
+    @staticmethod
+    def load_json_file(config_path: pathlib.Path) -> Dict[str, Any]:
+        """
+        Load the account config JSON file.
+        """
+        if not config_path.is_file():
+            raise FileNotFoundError(
+                f"Account config JSON not found: {config_path}. Copy account_config.example.json to "
+                f"account_config.json and edit it."
+            )
+
+        with open(config_path, encoding="utf-8") as f:
+            account_config_data = json.load(f)
+        
+        return account_config_data
+
+    @staticmethod
+    def _validate_account_config(account_config_data: Dict[str, Any]) -> None:
+        """
+        Validate the account config data.
+        """
+        required_keys = AccountConfigJson.get_keys()
+        missing = [required_key for required_key in required_keys if required_key not in account_config_data]
+        if missing:
+            raise ValueError(f"Account config missing keys: {missing}")
+        if not isinstance(account_config_data[AccountConfigJson.ExpectedKeys.ACCOUNT_DESC], dict):
+            raise ValueError("account_desc must be a JSON object mapping account ID strings to labels")
+
+    @staticmethod
+    def get_account_config_values(account_config_data: Dict[str, Any]):
+        """
+        Get the account config values from the account config data.
+
+        Returns:
+            - account_info_output_file: pathlib.Path
+            - deposits_file: pathlib.Path
+            - account_desc: dict[str, str]
+        """
+        account_info_output_file = pathlib.Path(account_config_data[AccountConfigJson.ExpectedKeys.ACCOUNT_INFO_OUTPUT_FILE])
+        deposits_file = pathlib.Path(account_config_data[AccountConfigJson.ExpectedKeys.DEPOSITS_FILE])
+        account_desc = account_config_data[AccountConfigJson.ExpectedKeys.ACCOUNT_DESC]
+
+        return account_info_output_file, deposits_file, account_desc
+
+    @staticmethod
+    def load_account_config(config_path: pathlib.Path) -> Dict[str, Any]:
+        """
+        Load account_info_output_file, deposits_file, and account_desc from JSON.
+        """
+        account_config_data = AccountConfigJson.load_json_file(config_path)
+        AccountConfigJson._validate_account_config(account_config_data)
+
+        return AccountConfigJson.get_account_config_values(account_config_data)
+
+
 class IbApiConstants:
     """
     String constants that IB uses in it's response message
@@ -94,30 +170,3 @@ def get_usd_to_ils_exchange_rate():
     logging.info(f"real-time USD to ILS exchange rate: {exchange_rate}")
 
     return exchange_rate
-
-
-def load_account_config(config_path: pathlib.Path) -> Dict[str, Any]:
-    """
-    Load account_info_output_file, deposits_file, and account_desc from JSON.
-    """
-    if not config_path.is_file():
-        raise FileNotFoundError(
-            f"Account config JSON not found: {config_path}. Copy account_config.example.json to "
-            f"account_config.json and edit it."
-        )
-
-    with open(config_path, encoding="utf-8") as f:
-        account_config_data = json.load(f)
-
-    required_keys = ("account_info_output_file", "deposits_file", "account_desc")
-    missing = [required_key for required_key in required_keys if required_key not in account_config_data]
-    if missing:
-        raise ValueError(f"Account config missing keys: {missing}")
-    if not isinstance(account_config_data["account_desc"], dict):
-        raise ValueError("account_desc must be a JSON object mapping account id strings to labels")
-
-    account_info_output_file = pathlib.Path(account_config_data["account_info_output_file"])
-    deposits_file = pathlib.Path(account_config_data["deposits_file"])
-    account_desc = account_config_data["account_desc"]
-
-    return account_info_output_file, deposits_file, account_desc
