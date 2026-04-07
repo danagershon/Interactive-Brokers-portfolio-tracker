@@ -41,10 +41,9 @@ class IbAccountInfoFetcher(IBConnector):
 
         if tag in utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS:
             # Handle base currency (assuming it's USD)
-            if currency == "BASE" or currency == "USD":
-                self.account_balance_info[account][tag]["USD"] = round(float(value), 2)
-            elif currency == "ILS":
-                self.account_balance_info[account][tag]["ILS"] = round(float(value), 2)
+            curreny_key = utils.IbApiConstants.Currency.USD if currency in [utils.IbApiConstants.Currency.BASE, utils.IbApiConstants.Currency.USD] \
+                else utils.IbApiConstants.Currency.ILS             
+            self.account_balance_info[account][tag][curreny_key] = round(float(value), 2)
 
         logging.debug(f"Account: {account}, Tag: {tag}, Value: {value}, Currency: {currency}")
 
@@ -60,7 +59,8 @@ class IbAccountInfoFetcher(IBConnector):
 
     @staticmethod
     def create_blank_account_data_structure_dict():
-        return {field: {"USD": 0.0, "ILS": 0.0} for field in utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS}
+        return {field: {utils.IbApiConstants.Currency.USD: 0.0, utils.IbApiConstants.Currency.ILS: 0.0} 
+                for field in utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS}
 
     def get_total_deposits(self):
         # get total ILS deposits since inception from the manually updated file
@@ -95,13 +95,13 @@ class IbAccountInfoFetcher(IBConnector):
             # Update ILS values based on the latest exchange rate
             for tag in utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS:
                 # Convert USD to ILS using the fetched exchange rate
-                usd_value = self.account_balance_info[account][tag]["USD"]
-                self.account_balance_info[account][tag]["ILS"] = round(usd_value * exchange_rate, 2)
+                usd_value = self.account_balance_info[account][tag][utils.IbApiConstants.Currency.USD]
+                self.account_balance_info[account][tag][utils.IbApiConstants.Currency.ILS] = round(usd_value * exchange_rate, 2)
 
             # Aggregate the values to the sum DataFrame
             for tag in utils.IbApiConstants.ACCOUNT_BALANCE_FIELDS:
-                sum_df.at[tag, "USD"] += self.account_balance_info[account][tag]["USD"]
-                sum_df.at[tag, "ILS"] += self.account_balance_info[account][tag]["ILS"]
+                sum_df.at[tag, utils.IbApiConstants.Currency.USD] += self.account_balance_info[account][tag][utils.IbApiConstants.Currency.USD]
+                sum_df.at[tag, utils.IbApiConstants.Currency.ILS] += self.account_balance_info[account][tag][utils.IbApiConstants.Currency.ILS]
 
         # Optionally write to Excel
         if write_to_excel:

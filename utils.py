@@ -22,6 +22,11 @@ class IbApiConstants:
         "UnrealizedPnL"
     ]
 
+    class Currency:
+        BASE = "BASE"
+        USD = "USD"
+        ILS = "ILS"
+
 
 def get_usd_to_ils_exchange_rate():
     """
