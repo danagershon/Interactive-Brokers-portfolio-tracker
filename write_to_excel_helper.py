@@ -153,7 +153,7 @@ class ExcelHelper:
                 cell.style = self.StyleName.PERCENTAGE_STYLE  # Apply percentage style to "Unrealized PnL %" columns
             elif IbApiConstants.Currency.USD in subcol_type:
                 cell.style = self.StyleName.USD_CURRENCY_STYLE  # Apply USD style for USD columns
-            elif "NIS" in subcol_type:
+            elif IbApiConstants.Currency.ILS in subcol_type:
                 cell.style = self.StyleName.ILS_CURRENCY_STYLE  # Apply ILS style for ILS columns
 
             # Apply red or green font color for Unrealized PnL columns (USD and ILS)
