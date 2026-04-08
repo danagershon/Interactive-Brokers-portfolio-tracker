@@ -4,7 +4,7 @@ from openpyxl.styles import Font
 from datetime import datetime
 import logging
 import pathlib
-from typing import Optional, Any
+from typing import Optional, Any, Callable
 
 from utils import IbApiConstants
 
@@ -137,45 +137,101 @@ class AccountInfoExcelColumns:
     def should_color_pnl(main_header: "AccountInfoExcelColumns.MainHeader", value: Any) -> bool:
         return main_header in AccountInfoExcelColumns.UNREALIZED_PNL_MAIN_HEADERS and isinstance(value, (float, int))
 
+    # Signature for per-header value getters.
+    # The getter returns the flattened values matching the header's subheaders.
+    ValueGetter = Callable[[dict[str, Any]], list[Any]]
+
     @staticmethod
-    def get_row_value_for_main_header(main_header: "AccountInfoExcelColumns.MainHeader", df: pd.DataFrame, row_type: str = None,
-                                      date: str = None, exchange_rate: float = None, total_ils_deposits: float = None) -> Any:
+    def _get_total_value_row(main_header: str, df: pd.DataFrame) -> list[Any]:
+        account_balance_field = AccountInfoExcelColumns.TOTAL_VALUE_MAIN_HEADER_TO_ACCOUNT_BALANCE_FIELD[main_header]
+        return [df.at[account_balance_field, currency] for currency in AccountInfoExcelColumns.TOTAL_VALUE_SUBHEADERS]
+
+    @staticmethod
+    def _get_ib_unrealized_pnl_row(df: pd.DataFrame) -> list[Any]:
         """
-        Get the value for a main header in the row.
+        IB-reported unrealized PnL in USD
+        """
+        net_liq_usd = df.at[IbApiConstants.AccountBalanceField.NET_LIQUIDATION_BY_CURRENCY, IbApiConstants.Currency.USD]
+        pnl_usd = df.at[IbApiConstants.AccountBalanceField.UNREALIZED_PNL, IbApiConstants.Currency.USD]
+        pnl_ils = df.at[IbApiConstants.AccountBalanceField.UNREALIZED_PNL, IbApiConstants.Currency.ILS]
+        base_investment = net_liq_usd - pnl_usd  # cost basis approximation
+        pct = pnl_usd / base_investment
+        return [pnl_usd, pnl_ils, pct]
+
+    @staticmethod
+    def _get_unrealized_pnl_from_deposits_row(df: pd.DataFrame, exchange_rate: float, total_ils_deposits: float) -> list[Any]:
+        """
+        Unrealized ILS PnL derived from deposits.
+        """
+        if total_ils_deposits is None:
+            return [""] * len(AccountInfoExcelColumns.UNREALIZED_PNL_SUBHEADERS)
+
+        net_liq_ils = df.at[IbApiConstants.AccountBalanceField.NET_LIQUIDATION_BY_CURRENCY, IbApiConstants.Currency.ILS]
+        pnl_ils = net_liq_ils - total_ils_deposits
+        pnl_usd = round(pnl_ils * (1 / exchange_rate), 2)
+        pct = pnl_ils / total_ils_deposits
+        return [pnl_usd, pnl_ils, pct]
+
+    @staticmethod
+    def _get_date(inputs: dict[str, Any]) -> list[Any]:
+        return [inputs.get("date", "")]
+
+    @staticmethod
+    def _get_exchange_rate(inputs: dict[str, Any]) -> list[Any]:
+        return [inputs.get("exchange_rate", "")]
+
+    @staticmethod
+    def _get_row_type(inputs: dict[str, Any]) -> list[Any]:
+        return [inputs.get("row_type")]
+
+    @staticmethod
+    def _get_total_ils_deposits(inputs: dict[str, Any]) -> list[Any]:
+        return [inputs.get("total_ils_deposits", "")]
+
+    @staticmethod
+    def _get_total_value_for_header(main_header: str) -> "AccountInfoExcelColumns.ValueGetter":
+        return lambda inputs: AccountInfoExcelColumns._get_total_value_row(main_header=main_header, df=inputs["df"])
+
+    @staticmethod
+    def _get_ib_unrealized_pnl(inputs: dict[str, Any]) -> list[Any]:
+        return AccountInfoExcelColumns._get_ib_unrealized_pnl_row(df=inputs["df"])
+
+    @staticmethod
+    def _get_unrealized_pnl_from_deposits(inputs: dict[str, Any]) -> list[Any]:
+        return AccountInfoExcelColumns._get_unrealized_pnl_from_deposits_row(
+            df=inputs["df"], 
+            exchange_rate=inputs["exchange_rate"], 
+            total_ils_deposits=inputs["total_ils_deposits"]
+        )
+
+    MAIN_HEADER_TO_VALUE_GETTER: dict[str, ValueGetter] = {
+        MainHeader.DATE: _get_date.__func__,
+        MainHeader.EXCHANGE_RATE: _get_exchange_rate.__func__,
+        MainHeader.TYPE: _get_row_type.__func__,
+        MainHeader.TOTAL_ILS_DEPOSITS: _get_total_ils_deposits.__func__,
+
+        MainHeader.NET_LIQUIDATION: _get_total_value_for_header(MainHeader.NET_LIQUIDATION),
+        MainHeader.STOCK_MARKET_VALUE: _get_total_value_for_header(MainHeader.STOCK_MARKET_VALUE),
+        MainHeader.TOTAL_CASH_BALANCE: _get_total_value_for_header(MainHeader.TOTAL_CASH_BALANCE),
+        MainHeader.NET_DIVIDEND: _get_total_value_for_header(MainHeader.NET_DIVIDEND),
+
+        MainHeader.IB_UNREALIZED_USD_PNL: _get_ib_unrealized_pnl.__func__,
+        MainHeader.UNREALIZED_ILS_PNL: _get_unrealized_pnl_from_deposits.__func__,
+    }
+
+    @staticmethod
+    def get_row_values(main_header: "AccountInfoExcelColumns.MainHeader", inputs: dict[str, Any]) -> list[Any]:
+        """
+        Return the *flattened* value(s) to write for a main header, aligned to its subheaders.
         """
         if main_header not in AccountInfoExcelColumns.MAIN_HEADER_ROW:
             raise ValueError(f"Invalid main header: {main_header}")
+        
+        value_getter = AccountInfoExcelColumns.MAIN_HEADER_TO_VALUE_GETTER.get(main_header)
+        if not value_getter:
+            raise ValueError(f"Unhandled main header: {main_header}")
 
-        if main_header == AccountInfoExcelColumns.MainHeader.DATE:
-            return [date]
-        if main_header == AccountInfoExcelColumns.MainHeader.EXCHANGE_RATE:
-            return [exchange_rate]
-        if main_header == AccountInfoExcelColumns.MainHeader.TYPE:
-            return [row_type]
-        if main_header == AccountInfoExcelColumns.MainHeader.TOTAL_ILS_DEPOSITS:
-            return [total_ils_deposits]
-
-        if main_header in AccountInfoExcelColumns.TOTAL_VALUE_MAIN_HEADERS:
-            account_balance_field = AccountInfoExcelColumns.TOTAL_VALUE_MAIN_HEADER_TO_ACCOUNT_BALANCE_FIELD[main_header]
-            return [df.at[account_balance_field, currency] for currency in AccountInfoExcelColumns.TOTAL_VALUE_SUBHEADERS]
-
-        if main_header in AccountInfoExcelColumns.UNREALIZED_PNL_MAIN_HEADERS:
-            source_currency = AccountInfoExcelColumns.UNREALIZED_PNL_MAIN_HEADER_TO_SOURCE_CURRENCY[main_header]
-            net_liq = df.at[IbApiConstants.AccountBalanceField.NET_LIQUIDATION_BY_CURRENCY, source_currency]
-            if main_header == AccountInfoExcelColumns.MainHeader.IB_UNREALIZED_USD_PNL:
-                account_balance_field = IbApiConstants.AccountBalanceField.UNREALIZED_PNL
-                unrealized_pnl_usd = unrealized_pnl = df.at[account_balance_field, source_currency]
-                unrealized_pnl_ils = df.at[account_balance_field, IbApiConstants.Currency.ILS]
-                base_investment = net_liq - unrealized_pnl_usd
-            if main_header == AccountInfoExcelColumns.MainHeader.UNREALIZED_ILS_PNL:
-                if total_ils_deposits is None:
-                    return [""] * len(AccountInfoExcelColumns.UNREALIZED_PNL_SUBHEADERS)
-                unrealized_pnl_ils = unrealized_pnl = net_liq - total_ils_deposits
-                unrealized_pnl_usd = round(unrealized_pnl_ils * (1 / exchange_rate), 2)
-                base_investment = total_ils_deposits
-
-            percent_pnl = unrealized_pnl / base_investment
-            return [unrealized_pnl_usd, unrealized_pnl_ils, percent_pnl]
+        return value_getter(inputs)
 
 
 class ExcelHelper:
@@ -256,15 +312,15 @@ class ExcelHelper:
         next_row = self.sheet.max_row + 1
 
         row_data = []
+        inputs = {
+            "df": df,
+            "row_type": row_type,
+            "date": date,
+            "exchange_rate": exchange_rate,
+            "total_ils_deposits": total_ils_deposits,
+        }
         for main_header in AccountInfoExcelColumns.MAIN_HEADER_ROW:
-            row_value = AccountInfoExcelColumns.get_row_value_for_main_header(
-                main_header=main_header,
-                df=df,
-                row_type=row_type,
-                date=date,
-                exchange_rate=exchange_rate,
-                total_ils_deposits=total_ils_deposits,
-            )
+            row_value = AccountInfoExcelColumns.get_row_values(main_header=main_header, inputs=inputs)
             row_data.extend(row_value)
 
         # Write the row data into the Excel sheet
