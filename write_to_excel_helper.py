@@ -136,15 +136,15 @@ class ExcelHelper:
         if total_ils_deposits is not None:
             # only the sum row will display ILS/USD PnL
             currency = IbApiConstants.Currency.ILS
-            unrealized_pnl_from_deposits = df.loc[IbApiConstants.AccountBalanceField.NET_LIQUIDATION_BY_CURRENCY, currency] - total_ils_deposits
-            unrealized_pnl_from_deposits_percent = unrealized_pnl_from_deposits / total_ils_deposits
+            unrealized_ils_pnl_from_deposits = df.loc[IbApiConstants.AccountBalanceField.NET_LIQUIDATION_BY_CURRENCY, currency] - total_ils_deposits
+            unrealized_ils_pnl_from_deposits_percent = unrealized_ils_pnl_from_deposits / total_ils_deposits
             ils_to_usd_exchange_rate = 1 / exchange_rate
-            unrealized_pnl_from_deposits_in_usd = unrealized_pnl_from_deposits * ils_to_usd_exchange_rate
+            unrealized_usd_pnl_from_deposits = unrealized_ils_pnl_from_deposits * ils_to_usd_exchange_rate
             # Add the Total ILS Deposits (only for the sum row, leave blank for individual accounts)
             row_data.append(total_ils_deposits)
-            ils_unrealized_pnl_values.extend([unrealized_pnl_from_deposits, 
-                                              unrealized_pnl_from_deposits_percent, 
-                                              unrealized_pnl_from_deposits_in_usd])
+            ils_unrealized_pnl_values.extend([unrealized_usd_pnl_from_deposits, 
+                                              unrealized_ils_pnl_from_deposits, 
+                                              unrealized_ils_pnl_from_deposits_percent])
         else:
             row_data.append("")  # Leave total ILS deposits blank for individual accounts
             ils_unrealized_pnl_values.extend([""] * 3)
