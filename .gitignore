@@ -1,0 +1,14 @@
+ExcelFiles/
+account_config.json
+.venv/
+.pylintrc
+.DS_Store
+__pycache__
+
+# Python build artifacts
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+dist/
+build/
