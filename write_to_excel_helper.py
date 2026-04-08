@@ -4,6 +4,7 @@ from openpyxl.styles import Font
 from datetime import datetime
 import logging
 import pathlib
+
 import utils
 from utils import IbApiConstants
 
@@ -46,23 +47,33 @@ class ExcelHelper:
         self.workbook = None
         self.sheet = None
 
-    def write_account_info_to_excel(self, account_info_output_file: pathlib.Path, account_desc: dict[str, str], sum_df, account_info, exchange_rate, total_ils_deposits):
+    def write_account_info_to_excel(self, account_info_output_file: pathlib.Path, account_desc: dict[str, str], sum_df: pd.DataFrame, 
+                                    account_info: dict[str, pd.DataFrame], exchange_rate: float, total_ils_deposits: float):
         """
-        Write account info into an Excel file. Rows will be written for: sum of accounts and individual account details.
+        Write account info into an Excel file. 
+        Rows will be written for: sum of accounts and individual account details.
+
+        Args:
+            account_info_output_file: pathlib.Path - the path to the Excel file to write the account info to
+            account_desc: dict[str, str] - the description of the account (mapping account ID to description)
+            sum_df: pd.DataFrame - the DataFrame for the sum of accounts
+            account_info: dict[str, pd.DataFrame] - the DataFrame for the individual accounts
+            exchange_rate: float - the current USD to ILS exchange rate
+            total_ils_deposits: float - the total ILS deposits of the master account
         """
         self._load_or_create_workbook(account_info_output_file)
         self._define_excel_styles()
         curr_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         # Write the sum of all accounts (first row)
-        self._write_row_to_excel(self.SUM_OF_ACCOUNTS_ROW_TYPE, sum_df, date=curr_datetime, 
+        self._write_row_to_excel(row_type=self.SUM_OF_ACCOUNTS_ROW_TYPE, df=sum_df, date=curr_datetime, 
                                  exchange_rate=exchange_rate, total_ils_deposits=total_ils_deposits)
 
         # Write individual account data (second row and onwards)
         for account_id, account_data_df in account_info.items():
             account_name = account_id + " " + account_desc[account_id]
             # No need to write date and exchange rate for individual accounts, since they appear once in the sum row
-            self._write_row_to_excel(account_name, account_data_df)
+            self._write_row_to_excel(row_type=account_name, df=account_data_df)
 
         # Save the workbook
         self.workbook.save(account_info_output_file)
@@ -84,11 +95,18 @@ class ExcelHelper:
             self.sheet = self.workbook.active
             utils.ExcelHelper._write_headers(self.sheet, self.HEADERS)
 
-    def _write_row_to_excel(self, row_type, df, date=None, exchange_rate=None, 
-                           total_ils_deposits=None, total_usd_deposits=None):
+    def _write_row_to_excel(self, row_type: str, df: pd.DataFrame, date: str = None, exchange_rate: float = None, 
+                           total_ils_deposits: float = None):
         """
         Write a single row of account data to the Excel file without currency symbols in values.
         Apply currency formatting using Excel styles. Only the first row (Sum of Accounts) should display 'Total ILS Deposits'.
+
+        Args:
+            row_type: str - the type of the row (Sum of Accounts or Specific Account)
+            df: pd.DataFrame - the DataFrame for the row (contains the account data)
+            date: str (optional) - the current date
+            exchange_rate: float (optional) - the current USD to ILS exchange rate
+            total_ils_deposits: float (optional) - the total deposits of the master account in ILS
         """
         # Ensure df is converted to a DataFrame if it is a dictionary
         if isinstance(df, dict):
@@ -102,43 +120,37 @@ class ExcelHelper:
 
         # Flatten the USD and ILS values from the DataFrame and add to row_data
         for tag in df.index:
-            row_data.append(df.loc[tag, IbApiConstants.Currency.USD])  # Add USD value first
-            row_data.append(df.loc[tag, IbApiConstants.Currency.ILS])  # Then add ILS value
+            # add the USD value first, then the ILS value
+            for currency in [IbApiConstants.Currency.USD, IbApiConstants.Currency.ILS]:
+                row_data.append(df.loc[tag, currency])
 
-        # Perform Unrealized PnL calculations for each account
-        usd_net_liquidation = df.loc[IbApiConstants.AccountBalanceField.NET_LIQUIDATION_BY_CURRENCY, IbApiConstants.Currency.USD]
-        usd_unrealized_pnl = df.loc[IbApiConstants.AccountBalanceField.UNREALIZED_PNL, IbApiConstants.Currency.USD]
-        total_usd_base_value = usd_net_liquidation - usd_unrealized_pnl
-        unrealized_usd_pnl_percent = usd_unrealized_pnl / total_usd_base_value
-
-        # Add Unrealized PnL and ILS PnL fields to the row data
-
-        # Add Unrealized USD PnL %
+        # Perform Unrealized PnL calculations
+        ib_usd_net_liquidation = df.loc[IbApiConstants.AccountBalanceField.NET_LIQUIDATION_BY_CURRENCY, IbApiConstants.Currency.USD]
+        ib_usd_unrealized_pnl = df.loc[IbApiConstants.AccountBalanceField.UNREALIZED_PNL, IbApiConstants.Currency.USD]
+        total_usd_base_value = ib_usd_net_liquidation - ib_usd_unrealized_pnl
+        unrealized_usd_pnl_percent = ib_usd_unrealized_pnl / total_usd_base_value
+        # Add Unrealized USD PnL % calculated from IB data
         row_data.append(unrealized_usd_pnl_percent)
 
-        for total_deposits in [total_ils_deposits, total_usd_deposits]:
-            if total_deposits is not None:
-                # only the sum row will display ILS/USD PnL
-                currency = IbApiConstants.Currency.ILS if total_deposits is total_ils_deposits else IbApiConstants.Currency.USD
-                unrealized_pnl_from_deposits = df.loc[IbApiConstants.AccountBalanceField.NET_LIQUIDATION_BY_CURRENCY, currency] - total_deposits
-                unrealized_pnl_from_deposits_percent = unrealized_pnl_from_deposits / total_deposits
-                unrealized_pnl_from_deposits_in_other_currency = unrealized_pnl_from_deposits * \
-                                                                 ((1 / exchange_rate) if currency == IbApiConstants.Currency.ILS else exchange_rate)
-            else:
-                unrealized_pnl_from_deposits = ""
-                unrealized_pnl_from_deposits_percent = ""
-                unrealized_pnl_from_deposits_in_other_currency = ""
+        ils_unrealized_pnl_values = []
+        if total_ils_deposits is not None:
+            # only the sum row will display ILS/USD PnL
+            currency = IbApiConstants.Currency.ILS
+            unrealized_pnl_from_deposits = df.loc[IbApiConstants.AccountBalanceField.NET_LIQUIDATION_BY_CURRENCY, currency] - total_ils_deposits
+            unrealized_pnl_from_deposits_percent = unrealized_pnl_from_deposits / total_ils_deposits
+            ils_to_usd_exchange_rate = 1 / exchange_rate
+            unrealized_pnl_from_deposits_in_usd = unrealized_pnl_from_deposits * ils_to_usd_exchange_rate
+            # Add the Total ILS Deposits (only for the sum row, leave blank for individual accounts)
+            row_data.append(total_ils_deposits)
+            ils_unrealized_pnl_values.extend([unrealized_pnl_from_deposits, 
+                                              unrealized_pnl_from_deposits_percent, 
+                                              unrealized_pnl_from_deposits_in_usd])
+        else:
+            row_data.append("")  # Leave total ILS deposits blank for individual accounts
+            ils_unrealized_pnl_values.extend([""] * 3)
 
-            # Add the Total ILS Deposits only for the sum row
-            if total_deposits is not None:
-                row_data.append(total_deposits)
-            else:
-                row_data.append("")  # Leave it blank for individual accounts
-    
-            # Add Unrealized ILS/USD PnL fields
-            row_data.append(unrealized_pnl_from_deposits)
-            row_data.append(unrealized_pnl_from_deposits_percent)
-            row_data.append(unrealized_pnl_from_deposits_in_other_currency)
+        # Add Unrealized ILS PnL fields
+        row_data.extend(ils_unrealized_pnl_values)
 
         # Write the row data into the Excel sheet
         for col_num, value in enumerate(row_data, start=1):
@@ -146,9 +158,7 @@ class ExcelHelper:
             if col_num <= 3:
                 continue  # skip Date, Exchange Rate and Type cols
 
-            subcol_type = self.sheet.cell(2, col_num).value
-            subcol_type = subcol_type or IbApiConstants.Currency.ILS  # assume col is ILS by default
-
+            subcol_type = self.sheet.cell(row=2, column=col_num).value
             if "%" in subcol_type:
                 cell.style = self.StyleName.PERCENTAGE_STYLE  # Apply percentage style to "Unrealized PnL %" columns
             elif IbApiConstants.Currency.USD in subcol_type:
@@ -157,19 +167,19 @@ class ExcelHelper:
                 cell.style = self.StyleName.ILS_CURRENCY_STYLE  # Apply ILS style for ILS columns
 
             # Apply red or green font color for Unrealized PnL columns (USD and ILS)
-            col_header = self.sheet.cell(1, col_num).value
+            col_header = self.sheet.cell(row=1, column=col_num).value
+            if not col_header:  # we are at ILS or % subcol of PnL
+                col_header = self.sheet.cell(row=1, column=col_num - 1).value
+            if not col_header:  # we are at % subcol of PnL
+                col_header = self.sheet.cell(row=1, column=col_num - 2).value
             if not col_header:
-                col_header = self.sheet.cell(1, col_num - 1).value  # we are at ILS subcol of PnL
-            if not col_header:
-                col_header = self.sheet.cell(1, col_num - 2).value  # we are at % subcol of PnL
-            if col_header and ("Unrealized USD PnL" in col_header or "Unrealized ILS PnL" in col_header):
+                raise ValueError(f"No col_header found for column {col_num}")
+            if "Unrealized USD PnL" in col_header or "Unrealized ILS PnL" in col_header:
                 if isinstance(value, (float, int)) and value != "":
-                    if value < 0:
-                        cell.font = Font(color=self.Colors.RED)  # Red color for negative values
-                    else:
-                        cell.font = Font(color=self.Colors.GREEN)  # Green color for positive values
+                    # Red color for negative values, green for positive values
+                    cell.font = Font(color=self.Colors.RED) if value < 0 else Font(color=self.Colors.GREEN)
 
-    def _write_headers(self, headers):
+    def _write_headers(self, headers: list[tuple[str, int]]):
         """
         Write the headers with merged cells for sub-columns
         """
