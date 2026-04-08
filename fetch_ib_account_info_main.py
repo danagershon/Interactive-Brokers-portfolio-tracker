@@ -47,4 +47,3 @@ if __name__ == "__main__":
     with IbAccountInfoFetcher(config_path=args.json_config) as ib_account_info_fetcher:
         sum_info, account_info = ib_account_info_fetcher.get_account_info(write_to_excel=args.excel)
         print("Sum of all accounts:\n", sum_info)
-        print("Individual account information:\n", account_info)

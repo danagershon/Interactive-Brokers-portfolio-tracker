@@ -23,7 +23,6 @@ class ExcelHelper:
         ('IB Unrealized USD PnL', 3),  # cols 12, 13, 14
         ('Total ILS Deposits', 1),  # col 15 (only filled in the sum row)
         ('Unrealized ILS PnL', 3),  # cols 16, 17, 18
-        ('Unrealized USD PnL', 3)  # cols 19, 20, 21
     ]
 
     class Colors:
