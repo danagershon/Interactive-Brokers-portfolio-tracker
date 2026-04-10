@@ -89,12 +89,26 @@ class IbAccountInfoFetcher(IBConnector):
             columns=[IbApiConstants.Currency.USD, IbApiConstants.Currency.ILS],
         )
 
-    def get_total_deposits(self):
+    def get_total_deposits(self) -> tuple[float, float]:
         """
-        get total ILS deposits since inception from the manually updated file
+        Get total deposits since inception from the manually updated file.
+
+        Returns:
+            (total_ils_deposits, total_usd_deposits)
+            
+        Note: The USD deposits are pre-converted from ILS.
         """
         deposits_df = pd.read_excel(self.deposits_file)
-        return deposits_df[deposits_df[DepositsFile.ExpectedColumns.TYPE] == DepositsFile.OperationTypes.DEPOSIT][DepositsFile.ExpectedColumns.AMOUNT].sum()
+        deposits_only = deposits_df[
+            deposits_df[DepositsFile.ExpectedColumns.TYPE] == DepositsFile.OperationTypes.DEPOSIT
+        ]
+
+        # Assumes Amount is in ILS for deposits rows.
+        total_ils = float(deposits_only[DepositsFile.ExpectedColumns.AMOUNT].sum())
+        # The USD column is assumed to be pre-converted from ILS.
+        total_usd = float(deposits_only[DepositsFile.ExpectedColumns.USD].sum())
+
+        return round(total_ils, 2), round(total_usd, 2)
 
     def get_account_info(self, write_to_excel):
         """
@@ -129,7 +143,9 @@ class IbAccountInfoFetcher(IBConnector):
         # Optionally write to Excel
         if write_to_excel:
             excel_helper = write_to_excel_helper.ExcelHelper()
+            total_ils_deposits, total_usd_deposits = self.get_total_deposits()
             excel_helper.write_account_info_to_excel(self.account_info_output_file, self.account_desc, sum_df, 
-                                                     self.account_balance_info, exchange_rate, self.get_total_deposits())
+                                                     self.account_balance_info, exchange_rate,
+                                                     total_ils_deposits, total_usd_deposits)
 
         return sum_df, self.account_balance_info

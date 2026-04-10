@@ -20,6 +20,7 @@ class AccountInfoExcelSchema:
         IB_UNREALIZED_USD_PNL = "IB Unrealized USD PnL"
         TOTAL_ILS_DEPOSITS = "Total ILS Deposits"
         UNREALIZED_ILS_PNL = "Unrealized ILS PnL"
+        UNREALIZED_USD_PNL = "Unrealized USD PnL"
 
     class SubHeader:
         """
@@ -59,6 +60,7 @@ class AccountInfoExcelSchema:
         MainHeader.IB_UNREALIZED_USD_PNL,
         MainHeader.TOTAL_ILS_DEPOSITS,
         MainHeader.UNREALIZED_ILS_PNL,
+        MainHeader.UNREALIZED_USD_PNL,
     ]
 
     TOTAL_VALUE_MAIN_HEADERS = [
@@ -83,6 +85,7 @@ class AccountInfoExcelSchema:
     UNREALIZED_PNL_MAIN_HEADERS = [
         MainHeader.IB_UNREALIZED_USD_PNL,
         MainHeader.UNREALIZED_ILS_PNL,
+        MainHeader.UNREALIZED_USD_PNL,
     ]
 
     UNREALIZED_PNL_MAIN_HEADER_TO_SOURCE_CURRENCY = {
@@ -106,8 +109,9 @@ class AccountInfoExcelSchema:
         MainHeader.TOTAL_CASH_BALANCE: TOTAL_VALUE_SUBHEADERS,
         MainHeader.NET_DIVIDEND: TOTAL_VALUE_SUBHEADERS,
         MainHeader.IB_UNREALIZED_USD_PNL: UNREALIZED_PNL_SUBHEADERS,
-        MainHeader.TOTAL_ILS_DEPOSITS: [SubHeader.ILS],
+        MainHeader.TOTAL_ILS_DEPOSITS: [SubHeader.ILS, SubHeader.USD],
         MainHeader.UNREALIZED_ILS_PNL: UNREALIZED_PNL_SUBHEADERS,
+        MainHeader.UNREALIZED_USD_PNL: UNREALIZED_PNL_SUBHEADERS,
     }
 
     @staticmethod
@@ -168,6 +172,21 @@ class AccountInfoExcelSchema:
         return [pnl_usd, pnl_ils, pct]
 
     @staticmethod
+    def _get_unrealized_usd_pnl_from_deposits_row(df: pd.DataFrame, exchange_rate: float, total_usd_deposits: float) -> list[Any]:
+        """
+        Unrealized USD PnL derived from USD deposits (the USD column in the deposits file).
+        The USD column is pre-converted from ILS deposits.
+        """
+        if total_usd_deposits is None:
+            return [""] * len(AccountInfoExcelSchema.UNREALIZED_PNL_SUBHEADERS)
+
+        net_liq_usd = df.at[IbApiConstants.AccountBalanceField.NET_LIQUIDATION_BY_CURRENCY, IbApiConstants.Currency.USD]
+        pnl_usd = net_liq_usd - total_usd_deposits
+        pnl_ils = round(pnl_usd * exchange_rate, 2)
+        pct = pnl_usd / total_usd_deposits
+        return [pnl_usd, pnl_ils, pct]
+
+    @staticmethod
     def _get_date(inputs: dict[str, Any]) -> list[Any]:
         return [inputs.get("date", "")]
 
@@ -181,7 +200,8 @@ class AccountInfoExcelSchema:
 
     @staticmethod
     def _get_total_ils_deposits(inputs: dict[str, Any]) -> list[Any]:
-        return [inputs.get("total_ils_deposits", "")]
+        # total USD deposits is as pre-converted from ILS
+        return [inputs.get("total_ils_deposits", ""), inputs.get("total_usd_deposits", "")]
 
     @staticmethod
     def _get_total_value_for_header(main_header: str) -> "AccountInfoExcelSchema.ValueGetter":
@@ -199,6 +219,14 @@ class AccountInfoExcelSchema:
             total_ils_deposits=inputs["total_ils_deposits"]
         )
 
+    @staticmethod
+    def _get_unrealized_usd_pnl_from_deposits(inputs: dict[str, Any]) -> list[Any]:
+        return AccountInfoExcelSchema._get_unrealized_usd_pnl_from_deposits_row(
+            df=inputs["df"],
+            exchange_rate=inputs["exchange_rate"],
+            total_usd_deposits=inputs.get("total_usd_deposits"),
+        )
+
     MAIN_HEADER_TO_VALUE_GETTER: dict[str, ValueGetter] = {
         MainHeader.DATE: _get_date.__func__,
         MainHeader.EXCHANGE_RATE: _get_exchange_rate.__func__,
@@ -212,6 +240,7 @@ class AccountInfoExcelSchema:
 
         MainHeader.IB_UNREALIZED_USD_PNL: _get_ib_unrealized_pnl.__func__,
         MainHeader.UNREALIZED_ILS_PNL: _get_unrealized_pnl_from_deposits.__func__,
+        MainHeader.UNREALIZED_USD_PNL: _get_unrealized_usd_pnl_from_deposits.__func__,
     }
 
     @staticmethod

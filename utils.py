@@ -137,6 +137,7 @@ class DepositsFile:
             - Currency: The currency of the deposit or withdrawal
             - Type: The type of the deposit or withdrawal ("Deposit" or "Withdrawal")
             - Exchange Rate: The exchange rate of the deposit or withdrawal
+            - USD: The USD amount of the deposit or withdrawal (after conversion from ILS)
 
         There can be more columns in the file, but the expected columns must be in this order.
         """
@@ -145,6 +146,7 @@ class DepositsFile:
         CURRENCY = "Currency"
         TYPE = "Type"  # one of the OperationTypes
         EXCHANGE_RATE = "Exchange Rate"
+        USD = "USD"
 
     class OperationTypes:
         DEPOSIT = "Deposit"

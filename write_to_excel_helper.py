@@ -21,8 +21,16 @@ class ExcelHelper:
         self.workbook = None
         self.sheet = None
 
-    def write_account_info_to_excel(self, account_info_output_file: pathlib.Path, account_desc: dict[str, str], sum_df: pd.DataFrame, 
-                                    account_info: dict[str, pd.DataFrame], exchange_rate: float, total_ils_deposits: float):
+    def write_account_info_to_excel(
+        self,
+        account_info_output_file: pathlib.Path,
+        account_desc: dict[str, str],
+        sum_df: pd.DataFrame,
+        account_info: dict[str, pd.DataFrame],
+        exchange_rate: float,
+        total_ils_deposits: float,
+        total_usd_deposits: float,
+    ):
         """
         Write account info into an Excel file. 
         Rows will be written for: sum of accounts and individual account details.
@@ -34,6 +42,7 @@ class ExcelHelper:
             account_info: dict[str, pd.DataFrame] - the DataFrame for the individual accounts
             exchange_rate: float - the current USD to ILS exchange rate
             total_ils_deposits: float - the total ILS deposits of the master account
+            total_usd_deposits: float - the total USD deposits of the master account (pre-converted from ILS)
         """
         self._load_or_create_workbook(account_info_output_file)
         self._define_excel_styles()
@@ -42,8 +51,11 @@ class ExcelHelper:
         # Write the sum of all accounts (first row)
         self._write_row_to_excel(
             row_type=self.SUM_OF_ACCOUNTS_ROW_TYPE, df=sum_df,
-            # only the sum row will have a date, exchange rate, and total ILS deposits
-            date=curr_datetime, exchange_rate=exchange_rate, total_ils_deposits=total_ils_deposits
+            # only the sum row will have a date, exchange rate, and total ILS and USD deposits
+            date=curr_datetime,
+            exchange_rate=exchange_rate,
+            total_ils_deposits=total_ils_deposits,
+            total_usd_deposits=total_usd_deposits,
         )
 
         # Write individual account data (second row and onwards)
@@ -72,7 +84,7 @@ class ExcelHelper:
             self._write_headers()
 
     def _write_row_to_excel(self, row_type: str, df: pd.DataFrame, date: str=None, exchange_rate: float=None, 
-                            total_ils_deposits: float=None):
+                            total_ils_deposits: float=None, total_usd_deposits: float=None):
         """
         Write a single row of account data to the Excel file.
 
@@ -82,6 +94,7 @@ class ExcelHelper:
             date: str - the current datetime
             exchange_rate: float - the USD to ILS exchange rate
             total_ils_deposits: float - the total ILS deposits of the master account
+            total_usd_deposits: float - the total USD deposits of the master account (pre-converted from ILS)
         """
         # Get the next available row in the sheet
         next_row = self.sheet.max_row + 1
@@ -93,6 +106,7 @@ class ExcelHelper:
             "date": date,
             "exchange_rate": exchange_rate,
             "total_ils_deposits": total_ils_deposits,
+            "total_usd_deposits": total_usd_deposits,
         }
         for main_header in AccountInfoExcelSchema.MAIN_HEADER_ROW:
             row_value = AccountInfoExcelSchema.get_row_values(main_header=main_header, inputs=inputs)
